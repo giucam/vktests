@@ -74,6 +74,9 @@ int get_queue_family(vk_physical_device *dev, const vk_surface &surface)
     return family_queue_index;
 }
 
+
+
+
 int main(int argc, char **argv)
 {
     auto plat = platform::xcb;
@@ -154,6 +157,9 @@ int main(int argc, char **argv)
         memcpy(data, vertices, sizeof(vertices));
     });
 
+    auto vertex_shader = vk_shader_module(device, "vert.spv");
+    auto fragment_shader = vk_shader_module(device, "frag.spv");
+
 
     const VkDescriptorSetLayoutCreateInfo descriptor_layout_info = {
         VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, //type
@@ -181,6 +187,7 @@ int main(int argc, char **argv)
     if (res != VK_SUCCESS) {
         throw vk_exception("Failed to create pipeline layout: {}\n", res);
     }
+
 
 
     VkAttachmentDescription attachment_desc[] = {

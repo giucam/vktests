@@ -513,6 +513,63 @@ void vk_buffer::map(const std::function<void (void *)> &cb)
 //--
 
 
+vk_shader_module::vk_shader_module(const std::weak_ptr<vk_device> &dev, const char *code, size_t size)
+                : m_device(dev)
+{
+    create(code, size);
+}
+
+vk_shader_module::vk_shader_module(const std::weak_ptr<vk_device> &dev, stringview file)
+                : m_device(dev)
+{
+    FILE *fp = fopen(file.to_string().data(), "rb");
+    if (!fp) {
+        throw vk_exception("Failed to open the shader file for read: {}\n", file);
+    }
+
+    fseek(fp, 0L, SEEK_END);
+    size_t size = ftell(fp);
+
+    fseek(fp, 0L, SEEK_SET);
+
+    char *code = new char[size];
+    if (!fread(code, size, 1, fp)) {
+        delete[] code;
+        throw vk_exception("Failed to read the shader file: {}\n", file);
+    }
+    fclose(fp);
+
+    try {
+        create(code, size);
+    } catch (...) {
+        delete[] code;
+        throw;
+    }
+
+    delete[] code;
+}
+
+vk_shader_module::~vk_shader_module()
+{
+    vkDestroyShaderModule(m_device.lock()->get_handle(), m_handle, nullptr);
+}
+
+void vk_shader_module::create(const char *code, size_t size)
+{
+    VkShaderModuleCreateInfo info = {
+        VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO, //type
+        nullptr, //next
+        0, //flags
+        size, //size
+        (const uint32_t *)code, //code
+    };
+    VkResult res = vkCreateShaderModule(m_device.lock()->get_handle(), &info, nullptr, &m_handle);
+    if (res != VK_SUCCESS) {
+        throw vk_exception("Failed to create shader module: {}\n", res);
+    }
+}
+
+
 std::ostream &operator<<(std::ostream &os, VkResult v)
 {
 #define CASE(err) case err: os << #err; break;

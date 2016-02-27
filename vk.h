@@ -312,3 +312,18 @@ private:
     uint64_t m_mem_offset;
 };
 
+class vk_shader_module
+{
+public:
+    vk_shader_module(const std::weak_ptr<vk_device> &device, const char *code, size_t size);
+    vk_shader_module(const std::weak_ptr<vk_device> &device, stringview file);
+    ~vk_shader_module();
+
+    VkShaderModule get_handle() const { return m_handle; }
+
+private:
+    void create(const char *code, size_t size);
+
+    std::weak_ptr<vk_device> m_device;
+    VkShaderModule m_handle;
+};
