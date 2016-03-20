@@ -6,6 +6,7 @@
 #include "vk.h"
 #include "display.h"
 
+class xcb_platform_display;
 
 class xcb_platform_window : public platform_window
 {
@@ -13,11 +14,12 @@ public:
     explicit xcb_platform_window(xcb_platform_display *dpy, const std::weak_ptr<window> &win);
 
     void show() override;
-    std::shared_ptr<vk_surface> create_vk_surface(const weak_ptr<vk_instance> &instance) override;
+    std::shared_ptr<vk_surface> create_vk_surface(const weak_ptr<vk_instance> &instance, vk_device *dev) override;
 
 private:
     xcb_platform_display *m_display;
     xcb_window_t m_xcb_window;
+    xcb_visualid_t m_root_visual;
 };
 
 class xcb_platform_display : public platform_display
@@ -32,6 +34,15 @@ public:
         }
     }
 
+    std::shared_ptr<vk_instance> create_vk_instance(const std::vector<std::string> &extensions) override
+    {
+        std::vector<std::string> exts = extensions;
+        exts.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
+        exts.push_back(VK_KHR_XCB_SURFACE_EXTENSION_NAME);
+
+        return std::make_shared<vk_instance>(std::vector<std::string>(), exts);
+    }
+
     unique_ptr<platform_window> create_window(const std::weak_ptr<window> &win) override
     {
         return make_unique<xcb_platform_window>(this, win);
@@ -43,7 +54,7 @@ private:
     friend class xcb_platform_window;
 };
 
-bool a = display::register_platform(platform::xcb, [](display *dpy) -> unique_ptr<platform_display> {
+static bool a = display::register_platform(platform::xcb, [](display *dpy) -> unique_ptr<platform_display> {
     return make_unique<xcb_platform_display>(dpy);
 });
 
@@ -95,6 +106,7 @@ xcb_platform_window::xcb_platform_window(xcb_platform_display *dpy, const std::w
                      XCB_WINDOW_CLASS_INPUT_OUTPUT,
                      iter.data->root_visual,
                      XCB_CW_EVENT_MASK, window_values);
+    m_root_visual = iter.data->root_visual;
 
     auto atom_wm_protocols = get_atom(m_display->m_connection, "WM_PROTOCOLS");
     auto atom_wm_delete_window = get_atom(m_display->m_connection, "WM_DELETE_WINDOW");
@@ -123,8 +135,12 @@ void xcb_platform_window::show()
    xcb_flush(m_display->m_connection);
 }
 
-std::shared_ptr<vk_surface> xcb_platform_window::create_vk_surface(const std::weak_ptr<vk_instance> &instance)
+std::shared_ptr<vk_surface> xcb_platform_window::create_vk_surface(const std::weak_ptr<vk_instance> &instance, vk_device *device)
 {
+    if (!vkGetPhysicalDeviceXcbPresentationSupportKHR(device->get_physical_device()->get_handle(), 0, m_display->m_connection, m_root_visual)) {
+        throw platform_exception("Presentation is not supported for this surface.");
+    }
+
     VkSurfaceKHR surface = 0;
     VkXcbSurfaceCreateInfoKHR info = {
         VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR, nullptr, 0,

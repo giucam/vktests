@@ -6,8 +6,6 @@
 #include <memory>
 #include <vector>
 
-#define VK_USE_PLATFORM_XCB_KHR
-#include <vulkan/vk_platform.h>
 #include <vulkan/vulkan.h>
 
 #include "stringview.h"
@@ -29,9 +27,19 @@ using fmt::print;
 
 
 
+
+
+
+
+
 int main(int argc, char **argv)
 {
-    auto dpy = display::create(platform::xcb);
+    auto plat = platform::xcb;
+    if (argc > 1 && stringview(argv[1]) == "wl") {
+        plat = platform::wayland;
+    }
+
+    auto dpy = display::create(plat);
     auto win = dpy->create_window(200, 200);
     win->show();
 
@@ -42,9 +50,7 @@ int main(int argc, char **argv)
         print("{}: {} == {}\n", i++, layer.get_name(), layer.get_description());
     }
 
-    auto vk = make_shared<vk_instance>(vector<string>({  }),
-                                       vector<string>({ VK_EXT_DEBUG_REPORT_EXTENSION_NAME, VK_KHR_SURFACE_EXTENSION_NAME,
-                                                        VK_KHR_XCB_SURFACE_EXTENSION_NAME }));
+    auto vk = dpy->create_vk_instance({ VK_EXT_DEBUG_REPORT_EXTENSION_NAME });
 
 
 //     PFN_vkCreateDebugReportCallbackEXT CreateDebugReportCallback;
@@ -70,8 +76,6 @@ int main(int argc, char **argv)
 //     VkResult err = CreateDebugReportCallback(vk.get_handle(), &dbgCreateInfo, NULL, &msg_callback);
 
     VkResult res;
-
-    auto surface = win->create_vk_surface(vk);
 
     auto phys_device = vk->get_physical_devices()[0];
 
@@ -102,6 +106,8 @@ int main(int argc, char **argv)
     auto init_cmd_buf = cmd_pool->create_command_buffer();
 
     init_cmd_buf->begin();
+
+    auto surface = win->create_vk_surface(vk, device.get());
 
     VkBool32 supports_present = false;
     vkGetPhysicalDeviceSurfaceSupportKHR(phys_device.get_handle(), 0, surface->get_handle(), &supports_present);
@@ -208,12 +214,6 @@ int main(int argc, char **argv)
 
 
 
-
-//     if (!vkGetPhysicalDeviceXcbPresentationSupportKHR(phys_device->handle(), 0, vc->xcb.conn,
-//                                                      iter.data->root_visual)) {
-//       fprintf(stderr, "Vulkan not supported on given X window");
-//       abort();
-//     }
 
 
 

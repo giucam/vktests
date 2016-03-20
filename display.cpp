@@ -11,6 +11,11 @@ std::shared_ptr<display> display::create(platform p)
     return dpy;
 }
 
+std::shared_ptr<vk_instance> display::create_vk_instance(const std::vector<std::string> &extensions)
+{
+    return m_platform_dpy->create_vk_instance(extensions);
+}
+
 std::shared_ptr<window> display::create_window(int width, int height)
 {
     class actual_win : public window {};

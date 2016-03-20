@@ -11,6 +11,7 @@
 
 class window;
 class vk_device;
+class vk_physical_device;
 
 class vk_exception : public std::exception
 {
@@ -92,6 +93,8 @@ public:
     }
     bool is_extension_enabled(stringview extension) const;
 
+    vk_physical_device *get_physical_device() const { return m_physical_device; }
+
     VkDevice get_handle() { return m_handle; }
 
 private:
@@ -99,6 +102,7 @@ private:
 
     VkDevice m_handle;
     std::vector<std::string> m_extensions;
+    vk_physical_device *m_physical_device;
     friend class vk_physical_device;
 };
 

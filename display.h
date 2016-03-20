@@ -8,6 +8,7 @@
 #include <memory>
 #include <functional>
 #include <unordered_map>
+#include <vector>
 
 #include <xcb/xcb.h>
 
@@ -17,10 +18,10 @@ class display;
 class window;
 class platform_window;
 class platform_display;
-class xcb_platform_display;
 
 class vk_surface;
 class vk_instance;
+class vk_device;
 
 using std::string;
 using std::weak_ptr;
@@ -49,6 +50,7 @@ private:
 
 enum class platform {
     xcb,
+    wayland,
 };
 
 class platform_window
@@ -60,7 +62,7 @@ public:
     }
 
     virtual void show() = 0;
-    virtual std::shared_ptr<vk_surface> create_vk_surface(const std::weak_ptr<vk_instance> &instance) = 0;
+    virtual std::shared_ptr<vk_surface> create_vk_surface(const std::weak_ptr<vk_instance> &instance, vk_device *device) = 0;
 
 protected:
     std::weak_ptr<window> m_window;
@@ -74,6 +76,7 @@ public:
     {
     }
 
+    virtual std::shared_ptr<vk_instance> create_vk_instance(const std::vector<std::string> &extensions) = 0;
     virtual unique_ptr<platform_window> create_window(const std::weak_ptr<window> &win) = 0;
 
 protected:
@@ -87,6 +90,8 @@ public:
     typedef function<unique_ptr<platform_display> (display *)> platform_display_factory;
 
     static std::shared_ptr<display> create(platform p);
+
+    std::shared_ptr<vk_instance> create_vk_instance(const std::vector<std::string> &extensions);
     std::shared_ptr<window> create_window(int width, int height);
 
     static bool register_platform(platform p, const platform_display_factory &factory);
@@ -110,9 +115,9 @@ public:
     int get_height() const { return m_height; }
 
     void show() { return m_platformWindow->show(); }
-    std::shared_ptr<vk_surface> create_vk_surface(const std::weak_ptr<vk_instance> &instance)
+    std::shared_ptr<vk_surface> create_vk_surface(const std::weak_ptr<vk_instance> &instance, vk_device *device)
     {
-        return m_platformWindow->create_vk_surface(instance);
+        return m_platformWindow->create_vk_surface(instance, device);
     }
 
 private:

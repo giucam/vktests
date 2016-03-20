@@ -255,6 +255,7 @@ shared_ptr<vk_device> vk_physical_device::do_create_device(uint32_t queue_family
     class actual_device : public vk_device {};
     auto device = make_shared<actual_device>();
     device->m_handle = dev;
+    device->m_physical_device = this;
     static_cast<vk_device *>(device.get())->m_extensions = extension_names;
     return device;
 }
