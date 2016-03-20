@@ -95,7 +95,7 @@ int main(int argc, char **argv)
     print("using queue {}\n", family_queue_index);
 
     auto device = phys_device.create_device<vk_swapchain_extension>(family_queue_index);
-    auto queue = device->get_queue(0, 0);
+    auto queue = device->get_queue(0);
 
     auto swapchain_ext = device->get_extension_object<vk_swapchain_extension>();
 

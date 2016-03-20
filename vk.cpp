@@ -156,11 +156,11 @@ vk_device::~vk_device()
     vkDestroyDevice(m_handle, nullptr);
 }
 
-shared_ptr<vk_queue> vk_device::get_queue(uint32_t family_index, uint32_t index)
+shared_ptr<vk_queue> vk_device::get_queue(uint32_t index)
 {
     VkQueue queue;
-    vkGetDeviceQueue(m_handle, family_index, index, &queue);
-    return make_shared<vk_queue>(queue, family_index, index);
+    vkGetDeviceQueue(m_handle, m_queue_family_index, index, &queue);
+    return make_shared<vk_queue>(queue, m_queue_family_index, index);
 }
 
 std::shared_ptr<vk_command_pool> vk_device::create_command_pool(const std::weak_ptr<vk_queue> &queue)
@@ -256,6 +256,7 @@ shared_ptr<vk_device> vk_physical_device::do_create_device(uint32_t queue_family
     auto device = make_shared<actual_device>();
     device->m_handle = dev;
     device->m_physical_device = this;
+    device->m_queue_family_index = queue_family_index;
     static_cast<vk_device *>(device.get())->m_extensions = extension_names;
     return device;
 }

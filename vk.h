@@ -81,7 +81,7 @@ class vk_device : public std::enable_shared_from_this<vk_device>
 public:
     ~vk_device();
 
-    std::shared_ptr<vk_queue> get_queue(uint32_t family_index, uint32_t index);
+    std::shared_ptr<vk_queue> get_queue(uint32_t index);
     std::shared_ptr<vk_command_pool> create_command_pool(const std::weak_ptr<vk_queue> &queue);
 
     template<class T>
@@ -103,6 +103,7 @@ private:
     VkDevice m_handle;
     std::vector<std::string> m_extensions;
     vk_physical_device *m_physical_device;
+    int m_queue_family_index;
     friend class vk_physical_device;
 };
 
