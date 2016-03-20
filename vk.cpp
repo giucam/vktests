@@ -400,6 +400,7 @@ std::ostream &operator<<(std::ostream &os, VkResult v)
         CASE(VK_ERROR_NATIVE_WINDOW_IN_USE_KHR)
         CASE(VK_ERROR_SURFACE_LOST_KHR)
         CASE(VK_SUBOPTIMAL_KHR)
+        CASE(VK_ERROR_INVALID_SHADER_NV)
     }
 #undef CASE
     return os;
