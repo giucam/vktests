@@ -14,7 +14,7 @@ public:
     explicit xcb_platform_window(xcb_platform_display *dpy, const std::weak_ptr<window> &win);
 
     void show() override;
-    std::shared_ptr<vk_surface> create_vk_surface(const weak_ptr<vk_instance> &instance, vk_device *dev) override;
+    std::shared_ptr<vk_surface> create_vk_surface(const weak_ptr<vk_instance> &instance) override;
 
 private:
     xcb_platform_display *m_display;
@@ -135,12 +135,8 @@ void xcb_platform_window::show()
    xcb_flush(m_display->m_connection);
 }
 
-std::shared_ptr<vk_surface> xcb_platform_window::create_vk_surface(const std::weak_ptr<vk_instance> &instance, vk_device *device)
+std::shared_ptr<vk_surface> xcb_platform_window::create_vk_surface(const std::weak_ptr<vk_instance> &instance)
 {
-    if (!vkGetPhysicalDeviceXcbPresentationSupportKHR(device->get_physical_device()->get_handle(), 0, m_display->m_connection, m_root_visual)) {
-        throw platform_exception("Presentation is not supported for this surface.");
-    }
-
     VkSurfaceKHR surface = 0;
     VkXcbSurfaceCreateInfoKHR info = {
         VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR, nullptr, 0,

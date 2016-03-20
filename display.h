@@ -21,7 +21,7 @@ class platform_display;
 
 class vk_surface;
 class vk_instance;
-class vk_device;
+class vk_physical_device;
 
 using std::string;
 using std::weak_ptr;
@@ -62,7 +62,7 @@ public:
     }
 
     virtual void show() = 0;
-    virtual std::shared_ptr<vk_surface> create_vk_surface(const std::weak_ptr<vk_instance> &instance, vk_device *device) = 0;
+    virtual std::shared_ptr<vk_surface> create_vk_surface(const std::weak_ptr<vk_instance> &instance) = 0;
 
 protected:
     std::weak_ptr<window> m_window;
@@ -115,9 +115,9 @@ public:
     int get_height() const { return m_height; }
 
     void show() { return m_platformWindow->show(); }
-    std::shared_ptr<vk_surface> create_vk_surface(const std::weak_ptr<vk_instance> &instance, vk_device *device)
+    std::shared_ptr<vk_surface> create_vk_surface(const std::weak_ptr<vk_instance> &instance)
     {
-        return m_platformWindow->create_vk_surface(instance, device);
+        return m_platformWindow->create_vk_surface(instance);
     }
 
 private:

@@ -29,7 +29,7 @@ public:
     explicit wl_platform_window(wl_platform_display *dpy, const std::weak_ptr<window> &win);
 
     void show() override;
-    std::shared_ptr<vk_surface> create_vk_surface(const weak_ptr<vk_instance> &instance, vk_device *d) override;
+    std::shared_ptr<vk_surface> create_vk_surface(const weak_ptr<vk_instance> &instance) override;
 
 private:
     wl_platform_display *m_display;
@@ -121,12 +121,8 @@ void wl_platform_window::show()
     wl_shell_surface_set_toplevel(m_shell_surface);
 }
 
-std::shared_ptr<vk_surface> wl_platform_window::create_vk_surface(const std::weak_ptr<vk_instance> &instance, vk_device *device)
+std::shared_ptr<vk_surface> wl_platform_window::create_vk_surface(const std::weak_ptr<vk_instance> &instance)
 {
-    if (!vkGetPhysicalDeviceWaylandPresentationSupportKHR(device->get_physical_device()->get_handle(), 0, m_display->m_display)) {
-        throw platform_exception("Presentation is not supported for this surface.");
-    }
-
     VkSurfaceKHR surface = 0;
     VkWaylandSurfaceCreateInfoKHR info = {
         VK_STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO_KHR, //type

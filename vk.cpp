@@ -290,6 +290,15 @@ vk_surface::vk_surface(const std::shared_ptr<window> &window, VkSurfaceKHR surfa
 {
 }
 
+bool vk_surface::supports_present(vk_physical_device *device, int queue_family)
+{
+    VkBool32 supports_present = false;
+    if (vkGetPhysicalDeviceSurfaceSupportKHR(device->get_handle(), queue_family, m_handle, &supports_present) == VK_SUCCESS) {
+        return supports_present;
+    }
+    return false;
+}
+
 
 //--
 

@@ -78,11 +78,12 @@ int main(int argc, char **argv)
     VkResult res;
 
     auto phys_device = vk->get_physical_devices()[0];
+    auto surface = win->create_vk_surface(vk);
 
     int family_queue_index = -1;
     auto queues_props = phys_device.get_queue_family_properties();
     for (size_t i = 0; i < queues_props.size(); ++i) {
-        if (queues_props.at(i).is_graphics_capable()) {
+        if (queues_props.at(i).is_graphics_capable() && surface->supports_present(&phys_device, i)) {
             family_queue_index = i;
             break;
         }
@@ -106,14 +107,6 @@ int main(int argc, char **argv)
     auto init_cmd_buf = cmd_pool->create_command_buffer();
 
     init_cmd_buf->begin();
-
-    auto surface = win->create_vk_surface(vk, device.get());
-
-    VkBool32 supports_present = false;
-    vkGetPhysicalDeviceSurfaceSupportKHR(phys_device.get_handle(), 0, surface->get_handle(), &supports_present);
-    if (!supports_present) {
-        throw vk_exception("Queue does not support present\n");
-    }
 
     uint32_t format_count;
     res = vkGetPhysicalDeviceSurfaceFormatsKHR(phys_device.get_handle(), surface->get_handle(), &format_count, nullptr);

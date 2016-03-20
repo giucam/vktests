@@ -189,6 +189,7 @@ class vk_surface
 public:
     vk_surface(const std::shared_ptr<window> &window, VkSurfaceKHR surface);
 
+    bool supports_present(vk_physical_device *device, int queue_family);
     std::shared_ptr<window> get_window() const { return m_window; }
     VkSurfaceKHR get_handle() const { return m_handle; }
 
