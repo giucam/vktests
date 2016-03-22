@@ -5,7 +5,7 @@
 #include "vk_swapchain.h"
 #include "display.h"
 
-vk_swapchain_extension::vk_swapchain_extension(const std::weak_ptr<vk_device> &device)
+vk_swapchain_extension::vk_swapchain_extension(const vk_device &device)
                       : m_device(device)
 {
 }
@@ -15,7 +15,7 @@ stringview vk_swapchain_extension::get_extension()
     return VK_KHR_SWAPCHAIN_EXTENSION_NAME;
 }
 
-std::shared_ptr<vk_swapchain> vk_swapchain_extension::create_swapchain(const vk_surface &surface, const VkSurfaceFormatKHR &format)
+vk_swapchain vk_swapchain_extension::create_swapchain(const vk_surface &surface, const VkSurfaceFormatKHR &format)
 {
     uint32_t width = surface.get_window().get_width();
     uint32_t height = surface.get_window().get_height();
@@ -41,26 +41,26 @@ std::shared_ptr<vk_swapchain> vk_swapchain_extension::create_swapchain(const vk_
         nullptr, //old swap chain
     };
     VkSwapchainKHR swapchain;
-    auto res = vkCreateSwapchainKHR(m_device.lock()->get_handle(), &swapchain_info, nullptr, &swapchain);
+    auto res = vkCreateSwapchainKHR(m_device.get_handle(), &swapchain_info, nullptr, &swapchain);
     if (res != VK_SUCCESS) {
         throw vk_exception("Failed to create swapchain: {}\n", res);
     }
-    return std::make_shared<vk_swapchain>(m_device, swapchain, surface);
+    return vk_swapchain(m_device, swapchain, surface);
 }
 
 
 //--
 
 
-vk_swapchain::vk_swapchain(const std::weak_ptr<vk_device> &device, VkSwapchainKHR handle, const vk_surface &surface)
+vk_swapchain::vk_swapchain(const vk_device &device, VkSwapchainKHR handle, const vk_surface &surface)
             : m_device(device)
             , m_handle(handle)
 {
     uint32_t image_count = 0;
-    vkGetSwapchainImagesKHR(device.lock()->get_handle(), m_handle, &image_count, nullptr);
+    vkGetSwapchainImagesKHR(device.get_handle(), m_handle, &image_count, nullptr);
 
     auto imgs = std::vector<VkImage>(image_count);
-    VkResult res = vkGetSwapchainImagesKHR(device.lock()->get_handle(), m_handle, &image_count, imgs.data());
+    VkResult res = vkGetSwapchainImagesKHR(device.get_handle(), m_handle, &image_count, imgs.data());
     if (res != VK_SUCCESS) {
         throw vk_exception("Failed to retrieve the swapchain images: {}\n", res);
     }
@@ -75,13 +75,13 @@ vk_swapchain::vk_swapchain(const std::weak_ptr<vk_device> &device, VkSwapchainKH
 
 vk_swapchain::~vk_swapchain()
 {
-    vkDestroySwapchainKHR(m_device.lock()->get_handle(), m_handle, nullptr);
+    vkDestroySwapchainKHR(m_device.get_handle(), m_handle, nullptr);
 }
 
 uint32_t vk_swapchain::acquire_next_image_index()
 {
     uint32_t index;
-    VkResult res = vkAcquireNextImageKHR(m_device.lock()->get_handle(), m_handle, UINT64_MAX, VK_NULL_HANDLE, VK_NULL_HANDLE, &index);
+    VkResult res = vkAcquireNextImageKHR(m_device.get_handle(), m_handle, UINT64_MAX, VK_NULL_HANDLE, VK_NULL_HANDLE, &index);
     if (res != VK_SUCCESS) {
         throw vk_exception("Failed to aquire swap chain image: {}\n", res);
     }

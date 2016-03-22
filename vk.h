@@ -65,20 +65,22 @@ private:
 class vk_command_pool
 {
 public:
-    vk_command_pool(const std::shared_ptr<vk_device> &device, VkCommandPool handle);
+    vk_command_pool(const vk_device &device, VkCommandPool handle);
 
     std::shared_ptr<vk_command_buffer> create_command_buffer();
 
     VkCommandPool get_handle() const { return m_handle; }
 
 private:
-    std::shared_ptr<vk_device> m_device;
+    const vk_device &m_device;
     VkCommandPool m_handle;
 };
 
-class vk_device : public std::enable_shared_from_this<vk_device>
+class vk_device
 {
 public:
+    vk_device(const vk_device &) = delete;
+    vk_device(vk_device &&);
     ~vk_device();
 
     std::shared_ptr<vk_queue> get_queue(uint32_t index);
@@ -89,13 +91,13 @@ public:
         if (!is_extension_enabled(T::get_extension())) {
             throw vk_exception("Cannot create the requested extension object. Extension '{}' not activated.\n", T::get_extension());
         }
-        return std::make_shared<T>((std::weak_ptr<vk_device>)shared_from_this());
+        return std::make_shared<T>(*this);
     }
     bool is_extension_enabled(stringview extension) const;
 
     vk_physical_device *get_physical_device() const { return m_physical_device; }
 
-    VkDevice get_handle() { return m_handle; }
+    VkDevice get_handle() const { return m_handle; }
 
 private:
     vk_device() {}
@@ -125,7 +127,7 @@ public:
     vk_physical_device();
 
     template<class... types>
-    std::shared_ptr<vk_device> create_device(uint32_t queue_family_index) {
+    vk_device create_device(uint32_t queue_family_index) {
         std::vector<std::string> extensions;
         populate_extensions<types...>(extensions);
         return do_create_device(queue_family_index, extensions);
@@ -142,7 +144,7 @@ public:
 
 private:
     void set(VkPhysicalDevice dev);
-    std::shared_ptr<vk_device> do_create_device(uint32_t queue_family_index, const std::vector<std::string> &extensions);
+    vk_device do_create_device(uint32_t queue_family_index, const std::vector<std::string> &extensions);
     template<class first, class second, class... others>
     void populate_extensions(std::vector<std::string> &extensions) {
         extensions.emplace_back(first::get_extension().to_string());
@@ -178,8 +180,7 @@ class vk_instance
 public:
     vk_instance(const std::vector<std::string> &layer_names, const std::vector<std::string> &extensions);
     vk_instance(const vk_instance &) = delete;
-//     vk_instance(const vk_instance &) { fmt::print("!!! COPY instance !!!\n"); }
-    vk_instance(vk_instance &&) { fmt::print("!!! MOVE instance !!!\n"); }
+    vk_instance(vk_instance &&);
 
     ~vk_instance();
 
@@ -213,20 +214,20 @@ private:
 class vk_image_view
 {
 public:
-    vk_image_view(const std::weak_ptr<vk_device> &device, VkImageView view);
+    vk_image_view(const vk_device &device, VkImageView view);
     ~vk_image_view();
 
     VkImageView get_handle() const { return m_handle; }
 
 private:
-    std::weak_ptr<vk_device> m_device;
+    const vk_device &m_device;
     VkImageView m_handle;
 };
 
 class vk_image
 {
 public:
-    vk_image(const std::weak_ptr<vk_device> &device, VkImage img, const VkExtent3D &extent);
+    vk_image(const vk_device &device, VkImage img, const VkExtent3D &extent);
     ~vk_image();
 
     uint32_t get_width() const { return m_extent.width; }
@@ -238,7 +239,7 @@ public:
     std::shared_ptr<vk_image_view> create_image_view();
 
 private:
-    std::weak_ptr<vk_device> m_device;
+    const vk_device &m_device;
     VkImage m_handle;
     VkExtent3D m_extent;
 };
@@ -253,7 +254,7 @@ public:
         host_cached = VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
         lazily_allocated = VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT,
     };
-    vk_device_memory(const std::weak_ptr<vk_device> &device, property props, uint64_t size, uint32_t type_bits);
+    vk_device_memory(const vk_device &device, property props, uint64_t size, uint32_t type_bits);
     ~vk_device_memory();
 
     void *map(uint64_t offset);
@@ -264,7 +265,7 @@ public:
 private:
     uint32_t get_mem_index(property props, uint32_t type_bits);
 
-    std::weak_ptr<vk_device> m_device;
+    const vk_device &m_device;
     VkDeviceMemory m_handle;
     uint64_t m_size;
     property m_props;
@@ -290,7 +291,7 @@ public:
         indirect_buffer = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT,
     };
 
-    vk_buffer(const std::weak_ptr<vk_device> &device, usage u, uint64_t size);
+    vk_buffer(const vk_device &device, usage u, uint64_t size);
     ~vk_buffer();
 
     uint64_t get_required_memory_size() const { return m_mem_reqs.size; }
@@ -305,7 +306,7 @@ public:
 
 
 private:
-    std::weak_ptr<vk_device> m_device;
+    const vk_device &m_device;
     VkBuffer m_handle;
     VkMemoryRequirements m_mem_reqs;
     vk_device_memory *m_mem;
@@ -315,8 +316,8 @@ private:
 class vk_shader_module
 {
 public:
-    vk_shader_module(const std::weak_ptr<vk_device> &device, const char *code, size_t size);
-    vk_shader_module(const std::weak_ptr<vk_device> &device, stringview file);
+    vk_shader_module(const vk_device &device, const char *code, size_t size);
+    vk_shader_module(const vk_device &device, stringview file);
     ~vk_shader_module();
 
     VkShaderModule get_handle() const { return m_handle; }
@@ -324,6 +325,6 @@ public:
 private:
     void create(const char *code, size_t size);
 
-    std::weak_ptr<vk_device> m_device;
+    const vk_device &m_device;
     VkShaderModule m_handle;
 };

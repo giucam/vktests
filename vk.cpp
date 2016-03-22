@@ -57,6 +57,14 @@ vk_instance::vk_instance(const vector<string> &layer_names, const vector<string>
     }
 }
 
+vk_instance::vk_instance(vk_instance &&i)
+           : m_instance(i.m_instance)
+           , m_physical_devices(std::move(i.m_physical_devices))
+{
+    fmt::print("!!! MOVE instance !!!\n");
+}
+
+
 vk_instance::~vk_instance()
 {
     vkDestroyInstance(m_instance, nullptr);
@@ -125,7 +133,7 @@ void vk_command_buffer::end()
 //--
 
 
-vk_command_pool::vk_command_pool(const std::shared_ptr<vk_device> &dev, VkCommandPool handle)
+vk_command_pool::vk_command_pool(const vk_device &dev, VkCommandPool handle)
                : m_device(dev)
                , m_handle(handle)
 {
@@ -141,7 +149,7 @@ std::shared_ptr<vk_command_buffer> vk_command_pool::create_command_buffer()
         VK_COMMAND_BUFFER_LEVEL_PRIMARY, //level
         1, //cmd buffer count
     };
-    VkResult res = vkAllocateCommandBuffers(m_device->get_handle(), &cmd_buf_info, &cmd_buf);
+    VkResult res = vkAllocateCommandBuffers(m_device.get_handle(), &cmd_buf_info, &cmd_buf);
     if (res != VK_SUCCESS) {
         throw vk_exception("Failed to allocate command buffer: {}\n", res);
     }
@@ -150,6 +158,13 @@ std::shared_ptr<vk_command_buffer> vk_command_pool::create_command_buffer()
 
 //--
 
+vk_device::vk_device(vk_device &&d)
+         : m_handle(d.m_handle)
+         , m_extensions(std::move(d.m_extensions))
+         , m_physical_device(d.m_physical_device)
+         , m_queue_family_index(d.m_queue_family_index)
+{
+}
 
 vk_device::~vk_device()
 {
@@ -174,7 +189,7 @@ std::shared_ptr<vk_command_pool> vk_device::create_command_pool(const std::weak_
     if (res != VK_SUCCESS) {
         throw vk_exception("Failed to create command pool: {}\n", res);
     }
-    return make_shared<vk_command_pool>(shared_from_this(), cmd_pool);
+    return make_shared<vk_command_pool>(*this, cmd_pool);
 }
 
 bool vk_device::is_extension_enabled(stringview extension) const
@@ -216,7 +231,7 @@ vk_physical_device::vk_physical_device()
 {
 }
 
-shared_ptr<vk_device> vk_physical_device::do_create_device(uint32_t queue_family_index, const std::vector<std::string> &extension_names)
+vk_device vk_physical_device::do_create_device(uint32_t queue_family_index, const std::vector<std::string> &extension_names)
 {
     float queue_priorities[1] = { 0.0 };
     VkDeviceQueueCreateInfo queue_info = {
@@ -252,12 +267,11 @@ shared_ptr<vk_device> vk_physical_device::do_create_device(uint32_t queue_family
         throw vk_exception("Failed to create a Vulkan device: {}\n", res);
     }
 
-    class actual_device : public vk_device {};
-    auto device = make_shared<actual_device>();
-    device->m_handle = dev;
-    device->m_physical_device = this;
-    device->m_queue_family_index = queue_family_index;
-    static_cast<vk_device *>(device.get())->m_extensions = extension_names;
+    auto device = vk_device();
+    device.m_handle = dev;
+    device.m_physical_device = this;
+    device.m_queue_family_index = queue_family_index;
+    device.m_extensions = extension_names;
     return device;
 }
 
@@ -336,32 +350,32 @@ std::vector<VkSurfaceFormatKHR> vk_surface::get_formats(vk_physical_device *dev)
 //--
 
 
-vk_image_view::vk_image_view(const std::weak_ptr<vk_device> &device, VkImageView view)
+vk_image_view::vk_image_view(const vk_device &device, VkImageView view)
              : m_device(device)
              , m_handle(view)
 {}
 
 vk_image_view::~vk_image_view()
 {
-    vkDestroyImageView(m_device.lock()->get_handle(), m_handle, nullptr);
+    vkDestroyImageView(m_device.get_handle(), m_handle, nullptr);
 }
 
 
 //--
 
 
-vk_image::vk_image(const std::weak_ptr<vk_device> &device, VkImage img, const VkExtent3D &extent)
+vk_image::vk_image(const vk_device &device, VkImage img, const VkExtent3D &extent)
         : m_device(device)
         , m_handle(img)
         , m_extent(extent)
 {
     VkMemoryRequirements req;
-    vkGetImageMemoryRequirements(device.lock()->get_handle(), img, &req);
+    vkGetImageMemoryRequirements(device.get_handle(), img, &req);
 }
 
 vk_image::~vk_image()
 {
-    vkDestroyImage(m_device.lock()->get_handle(), m_handle, nullptr);
+    vkDestroyImage(m_device.get_handle(), m_handle, nullptr);
 }
 
 
@@ -389,7 +403,7 @@ std::shared_ptr<vk_image_view> vk_image::create_image_view()
             1, //layer count
         },
     };
-    VkResult res = vkCreateImageView(m_device.lock()->get_handle(), &info, nullptr, &view);
+    VkResult res = vkCreateImageView(m_device.get_handle(), &info, nullptr, &view);
     if (res != VK_SUCCESS) {
         throw vk_exception("Failed to create image view: {}\n", res);
     }
@@ -401,7 +415,7 @@ std::shared_ptr<vk_image_view> vk_image::create_image_view()
 //--
 
 
-vk_device_memory::vk_device_memory(const std::weak_ptr<vk_device> &device, property props, uint64_t size, uint32_t type_bits)
+vk_device_memory::vk_device_memory(const vk_device &device, property props, uint64_t size, uint32_t type_bits)
                 : m_device(device)
                 , m_size(size)
                 , m_props(props)
@@ -416,7 +430,7 @@ vk_device_memory::vk_device_memory(const std::weak_ptr<vk_device> &device, prope
         size, //size
         get_mem_index(props, type_bits), //memory type index
     };
-    VkResult res = vkAllocateMemory(device.lock()->get_handle(), &mem_alloc, nullptr, &m_handle);
+    VkResult res = vkAllocateMemory(device.get_handle(), &mem_alloc, nullptr, &m_handle);
     if (res != VK_SUCCESS) {
         throw vk_exception("Failed to create vulkan device memory: {}\n", res);
     }
@@ -424,7 +438,7 @@ vk_device_memory::vk_device_memory(const std::weak_ptr<vk_device> &device, prope
 
 vk_device_memory::~vk_device_memory()
 {
-    vkFreeMemory(m_device.lock()->get_handle(), m_handle, nullptr);
+    vkFreeMemory(m_device.get_handle(), m_handle, nullptr);
 }
 
 void *vk_device_memory::map(uint64_t offset)
@@ -433,7 +447,7 @@ void *vk_device_memory::map(uint64_t offset)
         throw vk_exception("Attempted to map vulkan device memory without the host_visible property.\n");
     }
     void *ptr;
-    VkResult res = vkMapMemory(m_device.lock()->get_handle(), m_handle, offset, m_size - offset, 0, &ptr);
+    VkResult res = vkMapMemory(m_device.get_handle(), m_handle, offset, m_size - offset, 0, &ptr);
     if (res != VK_SUCCESS) {
         throw vk_exception("Failed to map vulkan device memory: err {}, offset {}, size {}\n", res, offset, m_size - offset);
     }
@@ -442,12 +456,12 @@ void *vk_device_memory::map(uint64_t offset)
 
 void vk_device_memory::unmap()
 {
-    vkUnmapMemory(m_device.lock()->get_handle(), m_handle);
+    vkUnmapMemory(m_device.get_handle(), m_handle);
 }
 
 uint32_t vk_device_memory::get_mem_index(property props, uint32_t type_bits)
 {
-    vk_physical_device *phys = m_device.lock()->get_physical_device();
+    vk_physical_device *phys = m_device.get_physical_device();
 
     // Search memtypes to find first index with those properties
     for (uint32_t i = 0; i < 32; i++) {
@@ -466,7 +480,7 @@ uint32_t vk_device_memory::get_mem_index(property props, uint32_t type_bits)
 //--
 
 
-vk_buffer::vk_buffer(const std::weak_ptr<vk_device> &device, usage u, uint64_t size)
+vk_buffer::vk_buffer(const vk_device &device, usage u, uint64_t size)
          : m_device(device)
          , m_mem(nullptr)
 {
@@ -480,21 +494,21 @@ vk_buffer::vk_buffer(const std::weak_ptr<vk_device> &device, usage u, uint64_t s
         0, //queue family index count
         nullptr, //queue family indices
     };
-    VkResult res = vkCreateBuffer(device.lock()->get_handle(), &buf_info, nullptr, &m_handle);
+    VkResult res = vkCreateBuffer(device.get_handle(), &buf_info, nullptr, &m_handle);
     if (res != VK_SUCCESS) {
         throw vk_exception("Failed to create vulkan buffer: {}\n", res);
     }
-    vkGetBufferMemoryRequirements(device.lock()->get_handle(), m_handle, &m_mem_reqs);
+    vkGetBufferMemoryRequirements(device.get_handle(), m_handle, &m_mem_reqs);
 }
 
 vk_buffer::~vk_buffer()
 {
-    vkDestroyBuffer(m_device.lock()->get_handle(), m_handle, nullptr);
+    vkDestroyBuffer(m_device.get_handle(), m_handle, nullptr);
 }
 
 void vk_buffer::bind_memory(vk_device_memory *memory, uint64_t offset)
 {
-    VkResult res = vkBindBufferMemory(m_device.lock()->get_handle(), m_handle, memory->get_handle(), offset);
+    VkResult res = vkBindBufferMemory(m_device.get_handle(), m_handle, memory->get_handle(), offset);
     if (res != VK_SUCCESS) {
         throw vk_exception("Failed to bind buffer memory: {}\n", res);
     }
@@ -513,13 +527,13 @@ void vk_buffer::map(const std::function<void (void *)> &cb)
 //--
 
 
-vk_shader_module::vk_shader_module(const std::weak_ptr<vk_device> &dev, const char *code, size_t size)
+vk_shader_module::vk_shader_module(const vk_device &dev, const char *code, size_t size)
                 : m_device(dev)
 {
     create(code, size);
 }
 
-vk_shader_module::vk_shader_module(const std::weak_ptr<vk_device> &dev, stringview file)
+vk_shader_module::vk_shader_module(const vk_device &dev, stringview file)
                 : m_device(dev)
 {
     FILE *fp = fopen(file.to_string().data(), "rb");
@@ -551,7 +565,7 @@ vk_shader_module::vk_shader_module(const std::weak_ptr<vk_device> &dev, stringvi
 
 vk_shader_module::~vk_shader_module()
 {
-    vkDestroyShaderModule(m_device.lock()->get_handle(), m_handle, nullptr);
+    vkDestroyShaderModule(m_device.get_handle(), m_handle, nullptr);
 }
 
 void vk_shader_module::create(const char *code, size_t size)
@@ -563,7 +577,7 @@ void vk_shader_module::create(const char *code, size_t size)
         size, //size
         (const uint32_t *)code, //code
     };
-    VkResult res = vkCreateShaderModule(m_device.lock()->get_handle(), &info, nullptr, &m_handle);
+    VkResult res = vkCreateShaderModule(m_device.get_handle(), &info, nullptr, &m_handle);
     if (res != VK_SUCCESS) {
         throw vk_exception("Failed to create shader module: {}\n", res);
     }

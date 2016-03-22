@@ -132,12 +132,12 @@ int main(int argc, char **argv)
     print("using queue {}\n", family_queue_index);
 
     auto device = phys_device.create_device<vk_swapchain_extension>(family_queue_index);
-    auto queue = device->get_queue(0);
+    auto queue = device.get_queue(0);
 
-    auto swapchain_ext = device->get_extension_object<vk_swapchain_extension>();
+    auto swapchain_ext = device.get_extension_object<vk_swapchain_extension>();
 
 
-    auto cmd_pool = device->create_command_pool(queue);
+    auto cmd_pool = device.create_command_pool(queue);
     auto init_cmd_buf = cmd_pool->create_command_buffer();
 
     init_cmd_buf->begin();
@@ -169,7 +169,7 @@ int main(int argc, char **argv)
         nullptr, //bindings
     };
     VkDescriptorSetLayout desc_layout;
-    res = vkCreateDescriptorSetLayout(device->get_handle(), &descriptor_layout_info, nullptr, &desc_layout);
+    res = vkCreateDescriptorSetLayout(device.get_handle(), &descriptor_layout_info, nullptr, &desc_layout);
     if (res != VK_SUCCESS) {
         throw vk_exception("Failed to create the descriptor set layout: {}\n", res);
     }
@@ -183,7 +183,7 @@ int main(int argc, char **argv)
         nullptr, //push constant ranges
     };
     VkPipelineLayout pipeline_layout;
-    res = vkCreatePipelineLayout(device->get_handle(), &pipeline_layout_create_info, nullptr, &pipeline_layout);
+    res = vkCreatePipelineLayout(device.get_handle(), &pipeline_layout_create_info, nullptr, &pipeline_layout);
     if (res != VK_SUCCESS) {
         throw vk_exception("Failed to create pipeline layout: {}\n", res);
     }
@@ -236,7 +236,7 @@ int main(int argc, char **argv)
     };
 
     VkRenderPass render_pass;
-    res = vkCreateRenderPass(device->get_handle(), &create_info, nullptr, &render_pass);
+    res = vkCreateRenderPass(device.get_handle(), &create_info, nullptr, &render_pass);
     if (res != VK_SUCCESS) {
         throw vk_exception("Failed to create render pass: {}\n", res);
     }
@@ -246,7 +246,7 @@ int main(int argc, char **argv)
         VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, nullptr, 0,
     };
     VkFence fence;
-    res = vkCreateFence(device->get_handle(), &fence_info, nullptr, &fence);
+    res = vkCreateFence(device.get_handle(), &fence_info, nullptr, &fence);
     if (res != VK_SUCCESS) {
         throw vk_exception("Failed to create fence: {}\n", res);
     }
@@ -257,13 +257,13 @@ int main(int argc, char **argv)
 
 
     auto swap_chain = swapchain_ext->create_swapchain(surface, format);
-    auto imgs = swap_chain->get_images();
+    auto imgs = swap_chain.get_images();
     print("{} images available\n", imgs.size());
 
     class vk_framebuffer
     {
     public:
-        vk_framebuffer(const weak_ptr<vk_device> &device, vk_image &img, VkRenderPass rpass)
+        vk_framebuffer(const vk_device &device, vk_image &img, VkRenderPass rpass)
             : m_device(device)
             , m_image(img)
             , m_view(m_image.create_image_view())
@@ -280,7 +280,7 @@ int main(int argc, char **argv)
                 m_image.get_height(), //height
                 1, //layers
             };
-            VkResult res = vkCreateFramebuffer(m_device.lock()->get_handle(), &info, nullptr, &m_handle);
+            VkResult res = vkCreateFramebuffer(m_device.get_handle(), &info, nullptr, &m_handle);
             if (res != VK_SUCCESS) {
                 throw vk_exception("Failed to create framebuffer: {}\n", res);
             }
@@ -293,7 +293,7 @@ int main(int argc, char **argv)
         VkFramebuffer get_handle() const { return m_handle; }
 
     private:
-        weak_ptr<vk_device> m_device;
+        const vk_device &m_device;
         vk_image &m_image;
         shared_ptr<vk_image_view> m_view;
         VkFramebuffer m_handle;
@@ -307,7 +307,7 @@ int main(int argc, char **argv)
     }
 
 
-    uint32_t index = swap_chain->acquire_next_image_index();
+    uint32_t index = swap_chain.acquire_next_image_index();
     vk_framebuffer &buffer = buffers[index];
 
 
@@ -403,7 +403,7 @@ int main(int argc, char **argv)
 //     vc->model.render(vc, &vc->buffers[index]);
 //
 
-    VkSwapchainKHR swapchain_raw = swap_chain->get_handle();
+    VkSwapchainKHR swapchain_raw = swap_chain.get_handle();
     VkPresentInfoKHR present_info = {
         VK_STRUCTURE_TYPE_PRESENT_INFO_KHR, //type
         nullptr, //next

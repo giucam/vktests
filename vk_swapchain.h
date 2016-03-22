@@ -14,20 +14,23 @@ class vk_swapchain;
 class vk_swapchain_extension
 {
 public:
-    vk_swapchain_extension(const std::weak_ptr<vk_device> &device);
+    vk_swapchain_extension(const vk_device &device);
+    vk_swapchain_extension(const vk_swapchain_extension &) = delete;
 
     static stringview get_extension();
 
-    std::shared_ptr<vk_swapchain> create_swapchain(const vk_surface &surface, const VkSurfaceFormatKHR &format);
+    vk_swapchain create_swapchain(const vk_surface &surface, const VkSurfaceFormatKHR &format);
 
 private:
-    std::weak_ptr<vk_device> m_device;
+    const vk_device &m_device;
 };
 
 class vk_swapchain
 {
 public:
-    vk_swapchain(const std::weak_ptr<vk_device> &device, VkSwapchainKHR, const vk_surface &surface);
+    vk_swapchain(const vk_device &device, VkSwapchainKHR, const vk_surface &surface);
+    vk_swapchain(const vk_swapchain &) = delete;
+    vk_swapchain(vk_swapchain &&);
     ~vk_swapchain();
 
     const std::vector<vk_image> &get_images() const { return m_images; }
@@ -36,7 +39,7 @@ public:
     VkSwapchainKHR get_handle() const { return m_handle; }
 
 private:
-    std::weak_ptr<vk_device> m_device;
+    const vk_device &m_device;
     VkSwapchainKHR m_handle;
     std::vector<vk_image> m_images;
 };
