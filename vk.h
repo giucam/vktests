@@ -135,6 +135,9 @@ public:
     stringview get_device_name() const { return m_props.deviceName; }
     const std::vector<vk_queue_family_properties> &get_queue_family_properties() const { return m_queue_properties; }
 
+    uint32_t get_memory_types_count() const;
+    VkMemoryType get_memory_type(uint32_t index) const;
+
     VkPhysicalDevice get_handle() { return m_handle; }
 
 private:
@@ -152,6 +155,7 @@ private:
 
     VkPhysicalDevice m_handle;
     VkPhysicalDeviceProperties m_props;
+    VkPhysicalDeviceMemoryProperties m_memprops;
     std::vector<vk_queue_family_properties> m_queue_properties;
 
     friend class vk_instance;
@@ -173,6 +177,10 @@ class vk_instance
 {
 public:
     vk_instance(const std::vector<std::string> &layer_names, const std::vector<std::string> &extensions);
+    vk_instance(const vk_instance &) = delete;
+//     vk_instance(const vk_instance &) { fmt::print("!!! COPY instance !!!\n"); }
+    vk_instance(vk_instance &&) { fmt::print("!!! MOVE instance !!!\n"); }
+
     ~vk_instance();
 
     VkInstance get_handle() const { return m_instance; }
@@ -187,14 +195,18 @@ private:
 class vk_surface
 {
 public:
-    vk_surface(const std::shared_ptr<window> &window, VkSurfaceKHR surface);
+    vk_surface(const window &window, VkSurfaceKHR surface);
+    vk_surface(const vk_surface &) = delete;
+    vk_surface(vk_surface &&s);
 
-    bool supports_present(vk_physical_device *device, int queue_family);
-    std::shared_ptr<window> get_window() const { return m_window; }
+    bool supports_present(vk_physical_device *device, int queue_family) const;
+    std::vector<VkSurfaceFormatKHR> get_formats(vk_physical_device *device) const;
+
+    const window &get_window() const { return m_window; }
     VkSurfaceKHR get_handle() const { return m_handle; }
 
 private:
-    std::shared_ptr<window> m_window;
+    const window &m_window;
     VkSurfaceKHR m_handle;
 };
 
@@ -229,5 +241,74 @@ private:
     std::weak_ptr<vk_device> m_device;
     VkImage m_handle;
     VkExtent3D m_extent;
+};
+
+class vk_device_memory
+{
+public:
+    enum class property {
+        device_local = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        host_visible = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+        host_coherent = VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        host_cached = VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
+        lazily_allocated = VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT,
+    };
+    vk_device_memory(const std::weak_ptr<vk_device> &device, property props, uint64_t size, uint32_t type_bits);
+    ~vk_device_memory();
+
+    void *map(uint64_t offset);
+    void unmap();
+
+    VkDeviceMemory get_handle() const { return m_handle; }
+
+private:
+    uint32_t get_mem_index(property props, uint32_t type_bits);
+
+    std::weak_ptr<vk_device> m_device;
+    VkDeviceMemory m_handle;
+    uint64_t m_size;
+    property m_props;
+};
+
+#define FLAGS(flags) \
+inline int operator&(flags a, flags b) { return (int)a & (int)b; }
+
+FLAGS(vk_device_memory::property)
+
+class vk_buffer
+{
+public:
+    enum class usage {
+        transfer_src = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        transfer_dst = VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        uniform_texel_bufer = VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT,
+        storage_texel_buffer = VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT,
+        uniform_buffer = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+        storage_buffer = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        index_buffer = VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+        vertex_buffer = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+        indirect_buffer = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT,
+    };
+
+    vk_buffer(const std::weak_ptr<vk_device> &device, usage u, uint64_t size);
+    ~vk_buffer();
+
+    uint64_t get_required_memory_size() const { return m_mem_reqs.size; }
+    uint64_t get_required_memory_alignment() const { return m_mem_reqs.alignment; }
+    uint32_t get_required_memory_type() const { return m_mem_reqs.memoryTypeBits; }
+
+    void bind_memory(vk_device_memory *mem, uint64_t offset);
+    void map(const std::function<void (void *)> &cp);
+
+    VkBuffer get_handle() const { return m_handle; }
+
+
+
+private:
+    std::weak_ptr<vk_device> m_device;
+    VkBuffer m_handle;
+    VkMemoryRequirements m_mem_reqs;
+    vk_device_memory *m_mem;
+    uint64_t m_mem_offset;
 };
 

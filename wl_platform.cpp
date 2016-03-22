@@ -23,13 +23,13 @@ constexpr static auto createWrapper(void (T::*)(Args...)) -> Wrapper<T, Args...>
 
 class wl_platform_display;
 
-class wl_platform_window : public platform_window
+class wl_platform_window
 {
 public:
-    explicit wl_platform_window(wl_platform_display *dpy, const std::weak_ptr<window> &win);
+    explicit wl_platform_window(wl_platform_display *dpy, int w, int h);
 
-    void show() override;
-    std::shared_ptr<vk_surface> create_vk_surface(const weak_ptr<vk_instance> &instance) override;
+    void show();
+    vk_surface create_vk_surface(const vk_instance &instance, const window &win);
 
 private:
     wl_platform_display *m_display;
@@ -37,12 +37,11 @@ private:
     wl_shell_surface *m_shell_surface;
 };
 
-class wl_platform_display : public platform_display
+class wl_platform_display
 {
 public:
-    explicit wl_platform_display(display *dpy)
-        : platform_display(dpy)
-        , m_compositor(nullptr)
+    explicit wl_platform_display()
+        : m_compositor(nullptr)
         , m_shell(nullptr)
     {
         m_display = wl_display_connect(nullptr);
@@ -63,18 +62,18 @@ public:
         }
     }
 
-    std::shared_ptr<vk_instance> create_vk_instance(const std::vector<std::string> &extensions) override
+    vk_instance create_vk_instance(const std::vector<std::string> &extensions)
     {
         std::vector<std::string> exts = extensions;
         exts.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
         exts.push_back(VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME);
 
-        return std::make_shared<vk_instance>(std::vector<std::string>(), exts);
+        return vk_instance(std::vector<std::string>(), exts);
     }
 
-    unique_ptr<platform_window> create_window(const std::weak_ptr<window> &win) override
+    wl_platform_window create_window(int w, int h)
     {
-        return make_unique<wl_platform_window>(this, win);
+        return wl_platform_window(this, w, h);
     }
 
     void global(wl_registry *reg, uint32_t id, const char *interface, uint32_t version)
@@ -102,15 +101,12 @@ private:
     friend class wl_platform_window;
 };
 
-static bool a = display::register_platform(platform::wayland, [](display *dpy) -> unique_ptr<platform_display> {
-    return make_unique<wl_platform_display>(dpy);
-});
+REGISTER_PLATFORM(platform::wayland, wl_platform_display);
 
 
 
-wl_platform_window::wl_platform_window(wl_platform_display *dpy, const std::weak_ptr<window> &win)
-                   : platform_window(win)
-                   , m_display(dpy)
+wl_platform_window::wl_platform_window(wl_platform_display *dpy, int, int)
+                : m_display(dpy)
 {
     m_surface = wl_compositor_create_surface(dpy->m_compositor);
 }
@@ -121,7 +117,7 @@ void wl_platform_window::show()
     wl_shell_surface_set_toplevel(m_shell_surface);
 }
 
-std::shared_ptr<vk_surface> wl_platform_window::create_vk_surface(const std::weak_ptr<vk_instance> &instance)
+vk_surface wl_platform_window::create_vk_surface(const vk_instance &instance, const window &win)
 {
     VkSurfaceKHR surface = 0;
     VkWaylandSurfaceCreateInfoKHR info = {
@@ -131,9 +127,9 @@ std::shared_ptr<vk_surface> wl_platform_window::create_vk_surface(const std::wea
         m_display->m_display, //display
         m_surface, //surface
     };
-    VkResult res = vkCreateWaylandSurfaceKHR(instance.lock()->get_handle(), &info, nullptr, &surface);
+    VkResult res = vkCreateWaylandSurfaceKHR(instance.get_handle(), &info, nullptr, &surface);
     if (res != VK_SUCCESS) {
         throw platform_exception("Failed to create vulkan surface");
     }
-    return make_shared<vk_surface>(m_window.lock(), surface);
+    return vk_surface(win, surface);
 }

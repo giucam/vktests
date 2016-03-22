@@ -265,11 +265,22 @@ void vk_physical_device::set(VkPhysicalDevice dev)
 {
     m_handle = dev;
     vkGetPhysicalDeviceProperties(dev, &m_props);
+    vkGetPhysicalDeviceMemoryProperties(dev, &m_memprops);
 
     uint32_t count;
     vkGetPhysicalDeviceQueueFamilyProperties(dev, &count, nullptr);
     m_queue_properties.resize(count);
     vkGetPhysicalDeviceQueueFamilyProperties(dev, &count, (VkQueueFamilyProperties *)m_queue_properties.data());
+}
+
+uint32_t vk_physical_device::get_memory_types_count() const
+{
+    return m_memprops.memoryTypeCount;
+}
+
+VkMemoryType vk_physical_device::get_memory_type(uint32_t index) const
+{
+    return m_memprops.memoryTypes[index];
 }
 
 
@@ -284,19 +295,41 @@ vk_layer::vk_layer(const VkLayerProperties &props)
 //--
 
 
-vk_surface::vk_surface(const std::shared_ptr<window> &window, VkSurfaceKHR surface)
+vk_surface::vk_surface(const window &window, VkSurfaceKHR surface)
           : m_window(window)
           , m_handle(surface)
 {
 }
 
-bool vk_surface::supports_present(vk_physical_device *device, int queue_family)
+vk_surface::vk_surface(vk_surface &&s)
+          : m_window(s.m_window)
+          , m_handle(s.m_handle)
+{
+    fmt::print("!!! MOVE surf !!!!\n");
+}
+
+bool vk_surface::supports_present(vk_physical_device *device, int queue_family) const
 {
     VkBool32 supports_present = false;
     if (vkGetPhysicalDeviceSurfaceSupportKHR(device->get_handle(), queue_family, m_handle, &supports_present) == VK_SUCCESS) {
         return supports_present;
     }
     return false;
+}
+
+std::vector<VkSurfaceFormatKHR> vk_surface::get_formats(vk_physical_device *dev) const
+{
+    uint32_t format_count;
+    VkResult res = vkGetPhysicalDeviceSurfaceFormatsKHR(dev->get_handle(), m_handle, &format_count, nullptr);
+    if (res != VK_SUCCESS) {
+        throw vk_exception("Failed to retrieve the number of surface formats: {}\n", res);
+    }
+    auto formats = std::vector<VkSurfaceFormatKHR>(format_count);
+    res = vkGetPhysicalDeviceSurfaceFormatsKHR(dev->get_handle(), m_handle, &format_count, formats.data());
+    if (res != VK_SUCCESS) {
+        throw vk_exception("Failed to retrieve the surface formats: {}\n", res);
+    }
+    return formats;
 }
 
 
@@ -362,6 +395,118 @@ std::shared_ptr<vk_image_view> vk_image::create_image_view()
     }
 
     return std::make_shared<vk_image_view>(m_device, view);
+}
+
+
+//--
+
+
+vk_device_memory::vk_device_memory(const std::weak_ptr<vk_device> &device, property props, uint64_t size, uint32_t type_bits)
+                : m_device(device)
+                , m_size(size)
+                , m_props(props)
+{
+    // if size is 0 vkAllocateMemory may fail with VK_ERROR_OUT_OF_DEVICE_MEMORY
+    if (size == 0)
+        size = 1;
+
+    const VkMemoryAllocateInfo mem_alloc = {
+        VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, //type
+        nullptr, //next,
+        size, //size
+        get_mem_index(props, type_bits), //memory type index
+    };
+    VkResult res = vkAllocateMemory(device.lock()->get_handle(), &mem_alloc, nullptr, &m_handle);
+    if (res != VK_SUCCESS) {
+        throw vk_exception("Failed to create vulkan device memory: {}\n", res);
+    }
+}
+
+vk_device_memory::~vk_device_memory()
+{
+    vkFreeMemory(m_device.lock()->get_handle(), m_handle, nullptr);
+}
+
+void *vk_device_memory::map(uint64_t offset)
+{
+    if (!(m_props & property::host_visible)) {
+        throw vk_exception("Attempted to map vulkan device memory without the host_visible property.\n");
+    }
+    void *ptr;
+    VkResult res = vkMapMemory(m_device.lock()->get_handle(), m_handle, offset, m_size - offset, 0, &ptr);
+    if (res != VK_SUCCESS) {
+        throw vk_exception("Failed to map vulkan device memory: err {}, offset {}, size {}\n", res, offset, m_size - offset);
+    }
+    return ptr;
+}
+
+void vk_device_memory::unmap()
+{
+    vkUnmapMemory(m_device.lock()->get_handle(), m_handle);
+}
+
+uint32_t vk_device_memory::get_mem_index(property props, uint32_t type_bits)
+{
+    vk_physical_device *phys = m_device.lock()->get_physical_device();
+
+    // Search memtypes to find first index with those properties
+    for (uint32_t i = 0; i < 32; i++) {
+        if ((type_bits & 1) == 1) {
+            // Type is available, does it match user properties?
+            if ((phys->get_memory_type(i).propertyFlags & (uint32_t)props) == (uint32_t)props) {
+                return i;
+            }
+        }
+        type_bits >>= 1;
+    }
+    throw vk_exception("No suitable memory type found with the requested properties: {}\n", (int)props);
+}
+
+
+//--
+
+
+vk_buffer::vk_buffer(const std::weak_ptr<vk_device> &device, usage u, uint64_t size)
+         : m_device(device)
+         , m_mem(nullptr)
+{
+    const VkBufferCreateInfo buf_info = {
+        VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, //type
+        nullptr, //next
+        0, //flags
+        size, //size
+        (VkBufferUsageFlags)u, //usage
+        VK_SHARING_MODE_EXCLUSIVE, //sharing mode
+        0, //queue family index count
+        nullptr, //queue family indices
+    };
+    VkResult res = vkCreateBuffer(device.lock()->get_handle(), &buf_info, nullptr, &m_handle);
+    if (res != VK_SUCCESS) {
+        throw vk_exception("Failed to create vulkan buffer: {}\n", res);
+    }
+    vkGetBufferMemoryRequirements(device.lock()->get_handle(), m_handle, &m_mem_reqs);
+}
+
+vk_buffer::~vk_buffer()
+{
+    vkDestroyBuffer(m_device.lock()->get_handle(), m_handle, nullptr);
+}
+
+void vk_buffer::bind_memory(vk_device_memory *memory, uint64_t offset)
+{
+    VkResult res = vkBindBufferMemory(m_device.lock()->get_handle(), m_handle, memory->get_handle(), offset);
+    if (res != VK_SUCCESS) {
+        throw vk_exception("Failed to bind buffer memory: {}\n", res);
+    }
+    m_mem = memory;
+    m_mem_offset = offset;
+}
+
+void vk_buffer::map(const std::function<void (void *)> &cb)
+{
+    void *data = m_mem->map(m_mem_offset);
+    cb(data);
+    m_mem->unmap();
 }
 
 

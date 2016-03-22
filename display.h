@@ -10,14 +10,12 @@
 #include <unordered_map>
 #include <vector>
 
-#include <xcb/xcb.h>
-
 #include "stringview.h"
+#include "vk.h"
 
 class display;
 class window;
 class platform_window;
-class platform_display;
 
 class vk_surface;
 class vk_instance;
@@ -56,75 +54,116 @@ enum class platform {
 class platform_window
 {
 public:
-    explicit platform_window(const std::weak_ptr<window> &win)
-        : m_window(win)
+    template<class T>
+    platform_window(T t)
+        : m_interface(std::make_unique<win<T>>(std::move(t)))
     {
     }
-
-    virtual void show() = 0;
-    virtual std::shared_ptr<vk_surface> create_vk_surface(const std::weak_ptr<vk_instance> &instance) = 0;
-
-protected:
-    std::weak_ptr<window> m_window;
-};
-
-class platform_display
-{
-public:
-    explicit platform_display(display *dpy)
-        : m_dpy(dpy)
-    {
-    }
-
-    virtual std::shared_ptr<vk_instance> create_vk_instance(const std::vector<std::string> &extensions) = 0;
-    virtual unique_ptr<platform_window> create_window(const std::weak_ptr<window> &win) = 0;
-
-protected:
-    display *m_dpy;
-};
-
-
-class display : public std::enable_shared_from_this<display>
-{
-public:
-    typedef function<unique_ptr<platform_display> (display *)> platform_display_factory;
-
-    static std::shared_ptr<display> create(platform p);
-
-    std::shared_ptr<vk_instance> create_vk_instance(const std::vector<std::string> &extensions);
-    std::shared_ptr<window> create_window(int width, int height);
-
-    static bool register_platform(platform p, const platform_display_factory &factory);
 
 private:
-    display() {}
+    struct win_interface
+    {
+        ~win_interface() = default;
+        virtual void show() = 0;
+        virtual vk_surface create_vk_surface(const vk_instance &instance, const window &win) = 0;
+    };
 
-    unique_ptr<platform_display> m_platform_dpy;
+    template<class T>
+    struct win : win_interface
+    {
+        win(T t) : data(std::move(t)) {}
+        void show() override { data.show(); }
+        vk_surface create_vk_surface(const vk_instance &instance, const window &win) override
+        {
+            return data.create_vk_surface(instance, win);
+        }
 
+        T data;
+    };
+
+    std::unique_ptr<win_interface> m_interface;
+    friend class window;
+    friend class display;
+};
+
+class display
+{
+public:
+    class platform_display
+    {
+    public:
+        template<class T>
+        platform_display(T t)
+            : m_interface(std::make_unique<dpy<T>>(std::move(t)))
+        {}
+
+    private:
+        struct dpy_interface
+        {
+            virtual ~dpy_interface() = default;
+            virtual vk_instance create_vk_instance(const std::vector<std::string> &extensions) = 0;
+            virtual platform_window create_window(int width, int height) = 0;
+        };
+
+        template<class T>
+        struct dpy : dpy_interface
+        {
+            dpy(T t) : data(std::move(t)) {}
+
+            vk_instance create_vk_instance(const std::vector<std::string> &extensions) override
+            {
+                return data.create_vk_instance(extensions);
+            }
+            platform_window create_window(int width, int height) override
+            {
+                return data.create_window(width, height);
+            }
+
+            T data;
+        };
+
+        std::unique_ptr<dpy_interface> m_interface;
+
+        friend class display;
+    };
+
+    using platform_display_factory = std::function<platform_display ()>;
+
+    display(platform p);
+
+    vk_instance create_vk_instance(const std::vector<std::string> &extensions);
+    window create_window(int width, int height);
+
+    static void register_platform(platform p, const platform_display_factory &factory);
+
+private:
+    platform_display m_platform_dpy;
     static unordered_map<int, platform_display_factory> s_factories;
 
     friend class window;
 };
 
-class window : public std::enable_shared_from_this<window>
+#define REGISTER_PLATFORM(platform, type) \
+    __attribute__((constructor)) \
+    static void register_platform() { \
+        display::register_platform(platform, []() -> type { return type(); }); \
+    }
+
+class window
 {
 public:
-    weak_ptr<display> get_display() const { return m_dpy; }
+    window(platform_window win);
+    window(const window &) = delete;
+    window(window &&w);
 
     int get_width() const { return m_width; }
     int get_height() const { return m_height; }
 
-    void show() { return m_platformWindow->show(); }
-    std::shared_ptr<vk_surface> create_vk_surface(const std::weak_ptr<vk_instance> &instance)
-    {
-        return m_platformWindow->create_vk_surface(instance);
-    }
+    void show();
+    vk_surface create_vk_surface(const vk_instance &instance);
 
 private:
-    window() {}
-
-    weak_ptr<display> m_dpy;
-    unique_ptr<platform_window> m_platformWindow;
+    platform_window m_platform_window;
     int m_width;
     int m_height;
 

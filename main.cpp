@@ -28,9 +28,51 @@ using fmt::print;
 
 
 
+vk_surface create_surface(window &window, const vk_instance &instance, vk_physical_device *dev, VkSurfaceFormatKHR *format)
+{
+    auto surface = window.create_vk_surface(instance);
 
+    auto formats = surface.get_formats(dev);
+    *format = formats.at(0);
+    print("Found {} formats, using {}\n", formats.size(), format->format);
 
+    VkSurfaceCapabilitiesKHR surface_caps;
+    VkResult res = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(dev->get_handle(), surface.get_handle(), &surface_caps);
+    if (res != VK_SUCCESS) {
+        throw vk_exception("Failed to get physical device surface capabilities: {}\n");
+    }
 
+    uint32_t present_mode_count;
+    res = vkGetPhysicalDeviceSurfacePresentModesKHR(dev->get_handle(), surface.get_handle(), &present_mode_count, nullptr);
+    if (res != VK_SUCCESS) {
+        throw vk_exception("Failed to get the number of physical device surface present modes: {}\n");
+    }
+    auto present_modes = vector<VkPresentModeKHR>(present_mode_count);
+    res = vkGetPhysicalDeviceSurfacePresentModesKHR(dev->get_handle(), surface.get_handle(), &present_mode_count, present_modes.data());
+    if (res != VK_SUCCESS) {
+        throw vk_exception("Failed to get the physical device surface present modes: {}\n");
+    }
+    print("Found {} present modes available\n", present_modes.size());
+
+    return surface;
+}
+
+int get_queue_family(vk_physical_device *dev, const vk_surface &surface)
+{
+    int family_queue_index = -1;
+    auto queues_props = dev->get_queue_family_properties();
+    for (size_t i = 0; i < queues_props.size(); ++i) {
+        if (queues_props.at(i).is_graphics_capable() && surface.supports_present(dev, i)) {
+            family_queue_index = i;
+            break;
+        }
+    }
+
+    if (family_queue_index < 0) {
+        throw vk_exception("Cannot find graphics queue.\n");
+    }
+    return family_queue_index;
+}
 
 int main(int argc, char **argv)
 {
@@ -39,9 +81,9 @@ int main(int argc, char **argv)
         plat = platform::wayland;
     }
 
-    auto dpy = display::create(plat);
-    auto win = dpy->create_window(200, 200);
-    win->show();
+    auto dpy = display(plat);
+    auto win = dpy.create_window(200, 200);
+    win.show();
 
     auto layers = vk_instance::get_available_layers();
     print("Found {} available layers\n", layers.size());
@@ -50,7 +92,9 @@ int main(int argc, char **argv)
         print("{}: {} == {}\n", i++, layer.get_name(), layer.get_description());
     }
 
-    auto vk = dpy->create_vk_instance({ VK_EXT_DEBUG_REPORT_EXTENSION_NAME });
+    auto vk = dpy.create_vk_instance({ VK_EXT_DEBUG_REPORT_EXTENSION_NAME });
+
+//     auto in = instance;
 
 
 //     PFN_vkCreateDebugReportCallbackEXT CreateDebugReportCallback;
@@ -77,22 +121,11 @@ int main(int argc, char **argv)
 
     VkResult res;
 
-    auto phys_device = vk->get_physical_devices()[0];
-    auto surface = win->create_vk_surface(vk);
+    auto phys_device = vk.get_physical_devices()[0];
+    VkSurfaceFormatKHR format;
+    auto surface = create_surface(win, vk, &phys_device, &format);
 
-    int family_queue_index = -1;
-    auto queues_props = phys_device.get_queue_family_properties();
-    for (size_t i = 0; i < queues_props.size(); ++i) {
-        if (queues_props.at(i).is_graphics_capable() && surface->supports_present(&phys_device, i)) {
-            family_queue_index = i;
-            break;
-        }
-    }
-
-    if (family_queue_index < 0) {
-        throw vk_exception("Cannot find graphics queue.\n");
-    }
-
+    int family_queue_index = get_queue_family(&phys_device, surface);
     print("using queue {}\n", family_queue_index);
 
     auto device = phys_device.create_device<vk_swapchain_extension>(family_queue_index);
@@ -102,46 +135,52 @@ int main(int argc, char **argv)
 
 
     auto cmd_pool = device->create_command_pool(queue);
-
-
     auto init_cmd_buf = cmd_pool->create_command_buffer();
 
     init_cmd_buf->begin();
 
-    uint32_t format_count;
-    res = vkGetPhysicalDeviceSurfaceFormatsKHR(phys_device.get_handle(), surface->get_handle(), &format_count, nullptr);
+    auto buf = vk_buffer(device, vk_buffer::usage::vertex_buffer, 10);
+    print("mem size {}\n",buf.get_required_memory_size());
+    auto memory = vk_device_memory(device, vk_device_memory::property::host_visible,
+                                   buf.get_required_memory_size(), buf.get_required_memory_type());
+    buf.bind_memory(&memory, 0);
+    buf.map([](void *data) {
+        static const float vertices[] = {
+            -1.0f, -1.0f,
+            1.0f, -1.0f,
+            0.0f,  1.0f,
+        };
+
+        memcpy(data, vertices, sizeof(vertices));
+    });
+
+
+    const VkDescriptorSetLayoutCreateInfo descriptor_layout_info = {
+        VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, //type
+        nullptr, //next
+        0, //flags
+        0, //bindings count
+        nullptr, //bindings
+    };
+    VkDescriptorSetLayout desc_layout;
+    res = vkCreateDescriptorSetLayout(device->get_handle(), &descriptor_layout_info, nullptr, &desc_layout);
     if (res != VK_SUCCESS) {
-        throw vk_exception("Failed to retrieve the number of surface formats: {}\n");
+        throw vk_exception("Failed to create the descriptor set layout: {}\n", res);
     }
-    auto formats = vector<VkSurfaceFormatKHR>(format_count);
-    res = vkGetPhysicalDeviceSurfaceFormatsKHR(phys_device.get_handle(), surface->get_handle(), &format_count, formats.data());
+    const VkPipelineLayoutCreateInfo pipeline_layout_create_info = {
+        VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO, //type
+        nullptr, //next
+        0, //flags
+        1, //descriptor set layout count
+        &desc_layout, //descriptor set layouts
+        0, //push constant range count
+        nullptr, //push constant ranges
+    };
+    VkPipelineLayout pipeline_layout;
+    res = vkCreatePipelineLayout(device->get_handle(), &pipeline_layout_create_info, nullptr, &pipeline_layout);
     if (res != VK_SUCCESS) {
-        throw vk_exception("Failed to retrieve the surface formats: {}\n");
+        throw vk_exception("Failed to create pipeline layout: {}\n", res);
     }
-    VkSurfaceFormatKHR format = formats.at(0);
-    print("Found {} formats, using {}\n", formats.size(), format.format);
-
-    VkSurfaceCapabilitiesKHR surface_caps;
-    res = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(phys_device.get_handle(), surface->get_handle(), &surface_caps);
-    if (res != VK_SUCCESS) {
-        throw vk_exception("Failed to get physical device surface capabilities: {}\n");
-    }
-
-    uint32_t present_mode_count;
-    res = vkGetPhysicalDeviceSurfacePresentModesKHR(phys_device.get_handle(), surface->get_handle(), &present_mode_count, nullptr);
-    if (res != VK_SUCCESS) {
-        throw vk_exception("Failed to get the number of physical device surface present modes: {}\n");
-    }
-    auto present_modes = vector<VkPresentModeKHR>(present_mode_count);
-    res = vkGetPhysicalDeviceSurfacePresentModesKHR(phys_device.get_handle(), surface->get_handle(), &present_mode_count, present_modes.data());
-    if (res != VK_SUCCESS) {
-        throw vk_exception("Failed to get the physical device surface present modes: {}\n");
-    }
-    print("Found {} present modes available\n", present_modes.size());
-
-
-
-
 
 
     VkAttachmentDescription attachment_desc[] = {

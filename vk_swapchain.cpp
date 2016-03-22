@@ -15,16 +15,16 @@ stringview vk_swapchain_extension::get_extension()
     return VK_KHR_SWAPCHAIN_EXTENSION_NAME;
 }
 
-std::shared_ptr<vk_swapchain> vk_swapchain_extension::create_swapchain(const std::shared_ptr<vk_surface> &surface, const VkSurfaceFormatKHR &format)
+std::shared_ptr<vk_swapchain> vk_swapchain_extension::create_swapchain(const vk_surface &surface, const VkSurfaceFormatKHR &format)
 {
-    uint32_t width = surface->get_window()->get_width();
-    uint32_t height = surface->get_window()->get_height();
+    uint32_t width = surface.get_window().get_width();
+    uint32_t height = surface.get_window().get_height();
 
     VkSwapchainCreateInfoKHR swapchain_info = {
         VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR, //type
         nullptr, //next
         0, //flags
-        surface->get_handle(), //surface
+        surface.get_handle(), //surface
         2, //min image count
         format.format, //image format
         format.colorSpace, //image color space
@@ -52,10 +52,9 @@ std::shared_ptr<vk_swapchain> vk_swapchain_extension::create_swapchain(const std
 //--
 
 
-vk_swapchain::vk_swapchain(const std::weak_ptr<vk_device> &device, VkSwapchainKHR handle, const std::shared_ptr<vk_surface> &surface)
+vk_swapchain::vk_swapchain(const std::weak_ptr<vk_device> &device, VkSwapchainKHR handle, const vk_surface &surface)
             : m_device(device)
             , m_handle(handle)
-            , m_surface(surface)
 {
     uint32_t image_count = 0;
     vkGetSwapchainImagesKHR(device.lock()->get_handle(), m_handle, &image_count, nullptr);
@@ -66,8 +65,8 @@ vk_swapchain::vk_swapchain(const std::weak_ptr<vk_device> &device, VkSwapchainKH
         throw vk_exception("Failed to retrieve the swapchain images: {}\n", res);
     }
 
-    uint32_t width = surface->get_window()->get_width();
-    uint32_t height = surface->get_window()->get_height();
+    uint32_t width = surface.get_window().get_width();
+    uint32_t height = surface.get_window().get_height();
     m_images.reserve(image_count);
     for (VkImage img: imgs) {
         m_images.emplace_back(device, img, (VkExtent3D){ width, height, 1 });

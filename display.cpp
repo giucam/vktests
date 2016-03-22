@@ -3,34 +3,48 @@
 
 unordered_map<int, display::platform_display_factory> display::s_factories;
 
-std::shared_ptr<display> display::create(platform p)
+display::display(platform p)
+       : m_platform_dpy(s_factories[int(p)]())
 {
-    class actual_dpy : public display {};
-    auto dpy = std::make_shared<actual_dpy>();
-    dpy->m_platform_dpy = s_factories[(int)p](dpy.get());
-    return dpy;
 }
 
-std::shared_ptr<vk_instance> display::create_vk_instance(const std::vector<std::string> &extensions)
+vk_instance display::create_vk_instance(const std::vector<std::string> &extensions)
 {
-    return m_platform_dpy->create_vk_instance(extensions);
+    return m_platform_dpy.m_interface->create_vk_instance(extensions);
 }
 
-std::shared_ptr<window> display::create_window(int width, int height)
+window display::create_window(int width, int height)
 {
-    class actual_win : public window {};
-    auto win = std::make_shared<actual_win>();
+    auto win = window(m_platform_dpy.m_interface->create_window(width, height));
 
-    win->m_width = width;
-    win->m_height = height;
-    win->m_dpy = shared_from_this();
-    win->m_platformWindow = m_platform_dpy->create_window(win);
+    win.m_width = width;
+    win.m_height = height;
     return win;
 }
 
-bool display::register_platform(platform p, const platform_display_factory &factory)
+void display::register_platform(platform p, const platform_display_factory &factory)
 {
     s_factories[(int)p] = factory;
-    return true;
+}
+
+
+window::window(platform_window w)
+      : m_platform_window(std::move(w))
+{
+}
+
+window::window(window &&w)
+      : m_platform_window(std::move(w.m_platform_window))
+{
+}
+
+void window::show()
+{
+    return m_platform_window.m_interface->show();
+}
+
+vk_surface window::create_vk_surface(const vk_instance &instance)
+{
+    return m_platform_window.m_interface->create_vk_surface(instance, *this);
 }
 

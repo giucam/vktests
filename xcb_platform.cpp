@@ -8,13 +8,13 @@
 
 class xcb_platform_display;
 
-class xcb_platform_window : public platform_window
+class xcb_platform_window
 {
 public:
-    explicit xcb_platform_window(xcb_platform_display *dpy, const std::weak_ptr<window> &win);
+    explicit xcb_platform_window(xcb_platform_display *dpy, int w, int h);
 
-    void show() override;
-    std::shared_ptr<vk_surface> create_vk_surface(const weak_ptr<vk_instance> &instance) override;
+    void show();
+    vk_surface create_vk_surface(const vk_instance &instance, const window &win);
 
 private:
     xcb_platform_display *m_display;
@@ -22,11 +22,10 @@ private:
     xcb_visualid_t m_root_visual;
 };
 
-class xcb_platform_display : public platform_display
+class xcb_platform_display
 {
 public:
-    explicit xcb_platform_display(display *dpy)
-        : platform_display(dpy)
+    xcb_platform_display()
     {
         m_connection = xcb_connect(0, 0);
         if (xcb_connection_has_error(m_connection)) {
@@ -34,18 +33,18 @@ public:
         }
     }
 
-    std::shared_ptr<vk_instance> create_vk_instance(const std::vector<std::string> &extensions) override
+    vk_instance create_vk_instance(const std::vector<std::string> &extensions)
     {
         std::vector<std::string> exts = extensions;
         exts.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
         exts.push_back(VK_KHR_XCB_SURFACE_EXTENSION_NAME);
 
-        return std::make_shared<vk_instance>(std::vector<std::string>(), exts);
+        return vk_instance(std::vector<std::string>(), exts);
     }
 
-    unique_ptr<platform_window> create_window(const std::weak_ptr<window> &win) override
+    xcb_platform_window create_window(int w, int h)
     {
-        return make_unique<xcb_platform_window>(this, win);
+        return xcb_platform_window(this, w, h);
     }
 
 private:
@@ -54,9 +53,8 @@ private:
     friend class xcb_platform_window;
 };
 
-static bool a = display::register_platform(platform::xcb, [](display *dpy) -> unique_ptr<platform_display> {
-    return make_unique<xcb_platform_display>(dpy);
-});
+REGISTER_PLATFORM(platform::xcb, xcb_platform_display);
+
 
 
 
@@ -79,9 +77,8 @@ get_atom(struct xcb_connection_t *conn, const char *name)
 }
 
 
-xcb_platform_window::xcb_platform_window(xcb_platform_display *dpy, const std::weak_ptr<window> &win)
-                   : platform_window(win)
-                   , m_display(dpy)
+xcb_platform_window::xcb_platform_window(xcb_platform_display *dpy, int width, int height)
+                   : m_display(dpy)
 {
 //     static const char title[] = "Vulkan Test";
 
@@ -100,8 +97,8 @@ xcb_platform_window::xcb_platform_window(xcb_platform_display *dpy, const std::w
                      m_xcb_window,
                      iter.data->root,
                      0, 0,
-                     m_window.lock()->get_width(),
-                     m_window.lock()->get_height(),
+                     width,
+                     height,
                      0,
                      XCB_WINDOW_CLASS_INPUT_OUTPUT,
                      iter.data->root_visual,
@@ -135,7 +132,7 @@ void xcb_platform_window::show()
    xcb_flush(m_display->m_connection);
 }
 
-std::shared_ptr<vk_surface> xcb_platform_window::create_vk_surface(const std::weak_ptr<vk_instance> &instance)
+vk_surface xcb_platform_window::create_vk_surface(const vk_instance &instance, const window &window)
 {
     VkSurfaceKHR surface = 0;
     VkXcbSurfaceCreateInfoKHR info = {
@@ -143,9 +140,9 @@ std::shared_ptr<vk_surface> xcb_platform_window::create_vk_surface(const std::we
         m_display->m_connection,
         m_xcb_window,
     };
-    VkResult res = vkCreateXcbSurfaceKHR(instance.lock()->get_handle(), &info, nullptr, &surface);
+    VkResult res = vkCreateXcbSurfaceKHR(instance.get_handle(), &info, nullptr, &surface);
     if (res != VK_SUCCESS) {
         throw platform_exception("Failed to create vulkan surface");
     }
-    return make_shared<vk_surface>(m_window.lock(), surface);
+    return vk_surface(window, surface);
 }
