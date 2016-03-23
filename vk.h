@@ -242,6 +242,7 @@ private:
     const vk_device &m_device;
     VkImage m_handle;
     VkExtent3D m_extent;
+    bool m_owns_handle;
 };
 
 class vk_device_memory

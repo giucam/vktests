@@ -368,6 +368,7 @@ vk_image::vk_image(const vk_device &device, VkImage img, const VkExtent3D &exten
         : m_device(device)
         , m_handle(img)
         , m_extent(extent)
+        , m_owns_handle(false)
 {
     VkMemoryRequirements req;
     vkGetImageMemoryRequirements(device.get_handle(), img, &req);
@@ -375,7 +376,9 @@ vk_image::vk_image(const vk_device &device, VkImage img, const VkExtent3D &exten
 
 vk_image::~vk_image()
 {
-    vkDestroyImage(m_device.get_handle(), m_handle, nullptr);
+    if (m_owns_handle) {
+        vkDestroyImage(m_device.get_handle(), m_handle, nullptr);
+    }
 }
 
 
