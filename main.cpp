@@ -97,7 +97,6 @@ int main(int argc, char **argv)
 
     auto vk = dpy.create_vk_instance({ VK_EXT_DEBUG_REPORT_EXTENSION_NAME });
 
-//     auto in = instance;
 
 
 //     PFN_vkCreateDebugReportCallbackEXT CreateDebugReportCallback;
@@ -137,10 +136,10 @@ int main(int argc, char **argv)
     auto swapchain_ext = device.get_extension_object<vk_swapchain_extension>();
 
 
-    auto cmd_pool = device.create_command_pool(queue);
-    auto init_cmd_buf = cmd_pool->create_command_buffer();
+    auto cmd_pool = device.create_command_pool();
+    auto init_cmd_buf = cmd_pool.create_command_buffer();
 
-    init_cmd_buf->begin();
+    init_cmd_buf.begin();
 
     auto buf = vk_buffer(device, vk_buffer::usage::vertex_buffer, 10);
     print("mem size {}\n",buf.get_required_memory_size());
@@ -257,18 +256,18 @@ int main(int argc, char **argv)
 
 
     auto swap_chain = swapchain_ext->create_swapchain(surface, format);
-    auto imgs = swap_chain.get_images();
+    const auto &imgs = swap_chain.get_images();
     print("{} images available\n", imgs.size());
 
     class vk_framebuffer
     {
     public:
-        vk_framebuffer(const vk_device &device, vk_image &img, VkRenderPass rpass)
+        vk_framebuffer(const vk_device &device, const vk_image &img, VkRenderPass rpass)
             : m_device(device)
             , m_image(img)
             , m_view(m_image.create_image_view())
         {
-            VkImageView view_handle = m_view->get_handle();
+            VkImageView view_handle = m_view.get_handle();
             VkFramebufferCreateInfo info = {
                 VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO, //type
                 nullptr, //next
@@ -289,19 +288,19 @@ int main(int argc, char **argv)
         uint32_t get_width() const { return m_image.get_width(); }
         uint32_t get_height() const { return m_image.get_height(); }
 
-        vk_image *get_image() const { return &m_image; }
+        const vk_image &get_image() const { return m_image; }
         VkFramebuffer get_handle() const { return m_handle; }
 
     private:
         const vk_device &m_device;
-        vk_image &m_image;
-        shared_ptr<vk_image_view> m_view;
+        const vk_image &m_image;
+        vk_image_view m_view;
         VkFramebuffer m_handle;
     };
 
     auto buffers = vector<vk_framebuffer>();
     buffers.reserve(imgs.size());
-    for (vk_image &img: imgs) {
+    for (const vk_image &img: imgs) {
         print("creating buffer {}\n",(void*)&img);
         buffers.emplace_back(device, img, render_pass);
     }
@@ -320,16 +319,16 @@ int main(int argc, char **argv)
         VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, //new image layout
         0, //src queue family index
         0, //dst queue family index
-        buffer.get_image()->get_handle(), //image
+        buffer.get_image().get_handle(), //image
         { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 }, //subresource range
     };
 
-    vkCmdPipelineBarrier(init_cmd_buf->get_handle(), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, 0, nullptr, 0,
+    vkCmdPipelineBarrier(init_cmd_buf.get_handle(), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, 0, nullptr, 0,
                          nullptr, 1, &image_memory_barrier);
 
-    init_cmd_buf->end();
+    init_cmd_buf.end();
 
-    const VkCommandBuffer cmd_bufs[] = { init_cmd_buf->get_handle() };
+    const VkCommandBuffer cmd_bufs[] = { init_cmd_buf.get_handle() };
     VkSubmitInfo submit_info = {
         VK_STRUCTURE_TYPE_SUBMIT_INFO, //type
         nullptr, //next
@@ -342,12 +341,12 @@ int main(int argc, char **argv)
         nullptr, //signal semaphores
     };
 
-    res = vkQueueSubmit(queue->get_handle(), 1, &submit_info, VK_NULL_HANDLE);
+    res = vkQueueSubmit(queue.get_handle(), 1, &submit_info, VK_NULL_HANDLE);
     if (res != VK_SUCCESS) {
         throw vk_exception("Failed to submit queue: {}\n", res);
     }
 
-    res = vkQueueWaitIdle(queue->get_handle());
+    res = vkQueueWaitIdle(queue.get_handle());
     if (res != VK_SUCCESS) {
         throw vk_exception("Failed to wait queue: {}\n", res);
     }
@@ -355,8 +354,8 @@ int main(int argc, char **argv)
 
     // === RENDER ===
 
-    auto cmd_buffer = cmd_pool->create_command_buffer();
-    cmd_buffer->begin();
+    auto cmd_buffer = cmd_pool.create_command_buffer();
+    cmd_buffer.begin();
 
     VkClearValue clear_values[1];
     clear_values[0].color.float32[0] = 1.0f;
@@ -375,12 +374,12 @@ int main(int argc, char **argv)
 
     print("pass {} fb {}\n",(void*)render_pass,(void*)buffer.get_handle());
 
-    vkCmdBeginRenderPass(cmd_buffer->get_handle(), &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
-    cmd_buffer->end();
+    vkCmdBeginRenderPass(cmd_buffer.get_handle(), &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
+    cmd_buffer.end();
 
 
     VkPipelineStageFlags pipe_stage_flags = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
-    VkCommandBuffer cmd_buf_raw = cmd_buffer->get_handle();
+    VkCommandBuffer cmd_buf_raw = cmd_buffer.get_handle();
     VkSubmitInfo submit_draw_info = {
         VK_STRUCTURE_TYPE_SUBMIT_INFO, //type
         nullptr, //next
@@ -392,7 +391,7 @@ int main(int argc, char **argv)
         0, //signal semaphores count
         nullptr, //signal semaphores
     };
-    res = vkQueueSubmit(queue->get_handle(), 1, &submit_draw_info, VK_NULL_HANDLE);
+    res = vkQueueSubmit(queue.get_handle(), 1, &submit_draw_info, VK_NULL_HANDLE);
     if (res != VK_SUCCESS) {
         throw vk_exception("Failed to submit queue: {}\n", res);
     }
@@ -414,7 +413,7 @@ int main(int argc, char **argv)
         &index, //image indices
         &res, //results
     };
-    vkQueuePresentKHR(queue->get_handle(), &present_info);
+    vkQueuePresentKHR(queue.get_handle(), &present_info);
     if (res != VK_SUCCESS) {
         throw vk_exception("Failed to present queue: {}\n", res);
     }

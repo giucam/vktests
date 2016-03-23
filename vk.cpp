@@ -139,7 +139,7 @@ vk_command_pool::vk_command_pool(const vk_device &dev, VkCommandPool handle)
 {
 }
 
-std::shared_ptr<vk_command_buffer> vk_command_pool::create_command_buffer()
+vk_command_buffer vk_command_pool::create_command_buffer()
 {
     VkCommandBuffer cmd_buf;
     VkCommandBufferAllocateInfo cmd_buf_info = {
@@ -153,10 +153,15 @@ std::shared_ptr<vk_command_buffer> vk_command_pool::create_command_buffer()
     if (res != VK_SUCCESS) {
         throw vk_exception("Failed to allocate command buffer: {}\n", res);
     }
-    return std::make_shared<vk_command_buffer>(cmd_buf);
+    return vk_command_buffer(cmd_buf);
 }
 
 //--
+
+vk_device::vk_device(const vk_physical_device &phys)
+         : m_physical_device(phys)
+{
+}
 
 vk_device::vk_device(vk_device &&d)
          : m_handle(d.m_handle)
@@ -171,25 +176,25 @@ vk_device::~vk_device()
     vkDestroyDevice(m_handle, nullptr);
 }
 
-shared_ptr<vk_queue> vk_device::get_queue(uint32_t index)
+vk_queue vk_device::get_queue(uint32_t index)
 {
     VkQueue queue;
     vkGetDeviceQueue(m_handle, m_queue_family_index, index, &queue);
-    return make_shared<vk_queue>(queue, m_queue_family_index, index);
+    return vk_queue(queue, m_queue_family_index, index);
 }
 
-std::shared_ptr<vk_command_pool> vk_device::create_command_pool(const std::weak_ptr<vk_queue> &queue)
+vk_command_pool vk_device::create_command_pool()
 {
     VkCommandPoolCreateInfo command_pool_info = {
         VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO, nullptr, 0,
-        queue.lock()->get_family_index(), //queue family index
+        m_queue_family_index, //queue family index
     };
     VkCommandPool cmd_pool;
     VkResult res = vkCreateCommandPool(get_handle(), &command_pool_info, nullptr, &cmd_pool);
     if (res != VK_SUCCESS) {
         throw vk_exception("Failed to create command pool: {}\n", res);
     }
-    return make_shared<vk_command_pool>(*this, cmd_pool);
+    return vk_command_pool(*this, cmd_pool);
 }
 
 bool vk_device::is_extension_enabled(stringview extension) const
@@ -267,9 +272,8 @@ vk_device vk_physical_device::do_create_device(uint32_t queue_family_index, cons
         throw vk_exception("Failed to create a Vulkan device: {}\n", res);
     }
 
-    auto device = vk_device();
+    auto device = vk_device(*this);
     device.m_handle = dev;
-    device.m_physical_device = this;
     device.m_queue_family_index = queue_family_index;
     device.m_extensions = extension_names;
     return device;
@@ -355,6 +359,12 @@ vk_image_view::vk_image_view(const vk_device &device, VkImageView view)
              , m_handle(view)
 {}
 
+vk_image_view::vk_image_view(vk_image_view &&i)
+             : m_device(i.m_device)
+             , m_handle(i.m_handle)
+{
+}
+
 vk_image_view::~vk_image_view()
 {
     vkDestroyImageView(m_device.get_handle(), m_handle, nullptr);
@@ -374,6 +384,14 @@ vk_image::vk_image(const vk_device &device, VkImage img, const VkExtent3D &exten
     vkGetImageMemoryRequirements(device.get_handle(), img, &req);
 }
 
+vk_image::vk_image(vk_image &&i)
+        : m_device(i.m_device)
+        , m_handle(i.m_handle)
+        , m_extent(i.m_extent)
+        , m_owns_handle(i.m_owns_handle)
+{
+}
+
 vk_image::~vk_image()
 {
     if (m_owns_handle) {
@@ -381,8 +399,7 @@ vk_image::~vk_image()
     }
 }
 
-
-std::shared_ptr<vk_image_view> vk_image::create_image_view()
+vk_image_view vk_image::create_image_view() const
 {
     VkImageView view;
     VkImageViewCreateInfo info = {
@@ -411,7 +428,7 @@ std::shared_ptr<vk_image_view> vk_image::create_image_view()
         throw vk_exception("Failed to create image view: {}\n", res);
     }
 
-    return std::make_shared<vk_image_view>(m_device, view);
+    return vk_image_view(m_device, view);
 }
 
 
@@ -464,13 +481,13 @@ void vk_device_memory::unmap()
 
 uint32_t vk_device_memory::get_mem_index(property props, uint32_t type_bits)
 {
-    vk_physical_device *phys = m_device.get_physical_device();
+    const vk_physical_device &phys = m_device.get_physical_device();
 
     // Search memtypes to find first index with those properties
     for (uint32_t i = 0; i < 32; i++) {
         if ((type_bits & 1) == 1) {
             // Type is available, does it match user properties?
-            if ((phys->get_memory_type(i).propertyFlags & (uint32_t)props) == (uint32_t)props) {
+            if ((phys.get_memory_type(i).propertyFlags & (uint32_t)props) == (uint32_t)props) {
                 return i;
             }
         }

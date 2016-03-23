@@ -37,6 +37,8 @@ class vk_queue
 {
 public:
     vk_queue(VkQueue queue, uint32_t family_index, uint32_t index);
+    vk_queue(const vk_queue &) = delete;
+    vk_queue(vk_queue &&);
 
     VkQueue get_handle() const { return m_handle; }
     uint32_t get_family_index() const { return m_family_index; }
@@ -52,6 +54,8 @@ class vk_command_buffer
 {
 public:
     explicit vk_command_buffer(VkCommandBuffer buf);
+    vk_command_buffer(const vk_command_buffer &) = delete;
+    vk_command_buffer(vk_command_buffer &&);
 
     void begin();
     void end();
@@ -66,8 +70,10 @@ class vk_command_pool
 {
 public:
     vk_command_pool(const vk_device &device, VkCommandPool handle);
+    vk_command_pool(const vk_command_pool &) = delete;
+    vk_command_pool(vk_command_pool &&);
 
-    std::shared_ptr<vk_command_buffer> create_command_buffer();
+    vk_command_buffer create_command_buffer();
 
     VkCommandPool get_handle() const { return m_handle; }
 
@@ -83,8 +89,8 @@ public:
     vk_device(vk_device &&);
     ~vk_device();
 
-    std::shared_ptr<vk_queue> get_queue(uint32_t index);
-    std::shared_ptr<vk_command_pool> create_command_pool(const std::weak_ptr<vk_queue> &queue);
+    vk_queue get_queue(uint32_t index);
+    vk_command_pool create_command_pool();
 
     template<class T>
     std::shared_ptr<T> get_extension_object() {
@@ -95,17 +101,17 @@ public:
     }
     bool is_extension_enabled(stringview extension) const;
 
-    vk_physical_device *get_physical_device() const { return m_physical_device; }
+    const vk_physical_device &get_physical_device() const { return m_physical_device; }
 
     VkDevice get_handle() const { return m_handle; }
 
 private:
-    vk_device() {}
+    vk_device(const vk_physical_device &phys);
 
     VkDevice m_handle;
     std::vector<std::string> m_extensions;
-    vk_physical_device *m_physical_device;
-    int m_queue_family_index;
+    const vk_physical_device &m_physical_device;
+    uint32_t m_queue_family_index;
     friend class vk_physical_device;
 };
 
@@ -215,6 +221,8 @@ class vk_image_view
 {
 public:
     vk_image_view(const vk_device &device, VkImageView view);
+    vk_image_view(const vk_image_view &) = delete;
+    vk_image_view(vk_image_view &&);
     ~vk_image_view();
 
     VkImageView get_handle() const { return m_handle; }
@@ -228,6 +236,8 @@ class vk_image
 {
 public:
     vk_image(const vk_device &device, VkImage img, const VkExtent3D &extent);
+    vk_image(const vk_image &) = delete;
+    vk_image(vk_image &&);
     ~vk_image();
 
     uint32_t get_width() const { return m_extent.width; }
@@ -236,7 +246,7 @@ public:
 
     VkImage get_handle() const { return m_handle; }
 
-    std::shared_ptr<vk_image_view> create_image_view();
+    vk_image_view create_image_view() const;
 
 private:
     const vk_device &m_device;
