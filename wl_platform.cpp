@@ -131,5 +131,5 @@ vk_surface wl_platform_window::create_vk_surface(const vk_instance &instance, co
     if (res != VK_SUCCESS) {
         throw platform_exception("Failed to create vulkan surface");
     }
-    return vk_surface(win, surface);
+    return vk_surface(instance, win, surface);
 }

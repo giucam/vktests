@@ -313,17 +313,24 @@ vk_layer::vk_layer(const VkLayerProperties &props)
 //--
 
 
-vk_surface::vk_surface(const window &window, VkSurfaceKHR surface)
-          : m_window(window)
+vk_surface::vk_surface(const vk_instance &instance, const window &window, VkSurfaceKHR surface)
+          : m_instance(instance)
+          , m_window(window)
           , m_handle(surface)
 {
 }
 
 vk_surface::vk_surface(vk_surface &&s)
-          : m_window(s.m_window)
+          : m_instance(s.m_instance)
+          , m_window(s.m_window)
           , m_handle(s.m_handle)
 {
     fmt::print("!!! MOVE surf !!!!\n");
+}
+
+vk_surface::~vk_surface()
+{
+    vkDestroySurfaceKHR(m_instance.get_handle(), m_handle, nullptr);
 }
 
 bool vk_surface::supports_present(vk_physical_device *device, int queue_family) const

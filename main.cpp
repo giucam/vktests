@@ -24,8 +24,185 @@ using std::vector;
 using fmt::print;
 
 
+class vk_pipeline_layout
+{
+public:
+    vk_pipeline_layout(const vk_device &device)
+        : m_device(device)
+    {
+        const VkDescriptorSetLayoutCreateInfo descriptor_layout_info = {
+            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, //type
+            nullptr, //next
+            0, //flags
+            0, //bindings count
+            nullptr, //bindings
+        };
+        VkDescriptorSetLayout desc_layout;
+        VkResult res = vkCreateDescriptorSetLayout(device.get_handle(), &descriptor_layout_info, nullptr, &desc_layout);
+        if (res != VK_SUCCESS) {
+            throw vk_exception("Failed to create the descriptor set layout: {}\n", res);
+        }
+        const VkPipelineLayoutCreateInfo pipeline_layout_create_info = {
+            VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO, //type
+            nullptr, //next
+            0, //flags
+            1, //descriptor set layout count
+            &desc_layout, //descriptor set layouts
+            0, //push constant range count
+            nullptr, //push constant ranges
+        };
+        res = vkCreatePipelineLayout(device.get_handle(), &pipeline_layout_create_info, nullptr, &m_handle);
+        if (res != VK_SUCCESS) {
+            throw vk_exception("Failed to create pipeline layout: {}\n", res);
+        }
+    }
 
+    ~vk_pipeline_layout()
+    {
+        vkDestroyPipelineLayout(m_device.get_handle(), m_handle, nullptr);
+    }
 
+    VkPipelineLayout get_handle() const { return m_handle; }
+
+private:
+    VkPipelineLayout m_handle;
+    const vk_device &m_device;
+};
+
+class vk_renderpass
+{
+public:
+    vk_renderpass(const vk_device &device, VkFormat format)
+        : m_device(device)
+    {
+        VkAttachmentDescription attachment_desc[] = {
+            {
+                0, //flags
+                format, //format
+                VK_SAMPLE_COUNT_1_BIT, //samples
+                VK_ATTACHMENT_LOAD_OP_CLEAR, //load op
+                VK_ATTACHMENT_STORE_OP_STORE, //store op
+                VK_ATTACHMENT_LOAD_OP_DONT_CARE, //stencil load op
+                VK_ATTACHMENT_STORE_OP_DONT_CARE, //stencil store op
+                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, //initial layout
+                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, //final layout
+            }
+        };
+        VkAttachmentReference color_attachments[] = {
+            { 0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, },
+        };
+        VkAttachmentReference resolve_attachments[] = {
+            { VK_ATTACHMENT_UNUSED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, },
+        };
+        const VkAttachmentReference depth_reference = {
+            VK_ATTACHMENT_UNUSED,
+            VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        };
+        const uint32_t preserve_attachments[] = { 0 };
+        VkSubpassDescription subpass_desc[] = {
+            {
+                0, //flags
+                VK_PIPELINE_BIND_POINT_GRAPHICS, //pipeline bind point
+                0, //input attachments count
+                nullptr, //input attachments
+                1, //color attachments count
+                color_attachments, //color_attachments
+                nullptr, //resolve attachments
+                &depth_reference, //depth stencil attachments
+                0, //preserve attachments count
+                nullptr, //preserve attachments
+            },
+        };
+        VkRenderPassCreateInfo create_info = {
+            VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO, nullptr, 0,
+            1, attachment_desc,
+            1, subpass_desc,
+            0, nullptr,
+        };
+
+        VkResult res = vkCreateRenderPass(device.get_handle(), &create_info, nullptr, &m_handle);
+        if (res != VK_SUCCESS) {
+            throw vk_exception("Failed to create render pass: {}\n", res);
+        }
+    }
+
+    ~vk_renderpass()
+    {
+        vkDestroyRenderPass(m_device.get_handle(), m_handle, nullptr);
+    }
+
+    VkRenderPass get_handle() const { return m_handle; }
+
+private:
+    VkRenderPass m_handle;
+    const vk_device &m_device;
+};
+
+class vk_framebuffer
+{
+public:
+    vk_framebuffer(const vk_device &device, const vk_image &img, const vk_renderpass &rpass)
+        : m_device(device)
+        , m_image(img)
+        , m_view(m_image.create_image_view())
+    {
+        VkImageView view_handle = m_view.get_handle();
+        VkFramebufferCreateInfo info = {
+            VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO, //type
+            nullptr, //next
+            0, //flags
+            rpass.get_handle(), //render pass
+            1, //attachment count
+            &view_handle, //attachments
+            m_image.get_width(), //width
+            m_image.get_height(), //height
+            1, //layers
+        };
+        VkResult res = vkCreateFramebuffer(m_device.get_handle(), &info, nullptr, &m_handle);
+        if (res != VK_SUCCESS) {
+            throw vk_exception("Failed to create framebuffer: {}\n", res);
+        }
+    }
+
+    uint32_t get_width() const { return m_image.get_width(); }
+    uint32_t get_height() const { return m_image.get_height(); }
+
+    const vk_image &get_image() const { return m_image; }
+    VkFramebuffer get_handle() const { return m_handle; }
+
+private:
+    const vk_device &m_device;
+    const vk_image &m_image;
+    vk_image_view m_view;
+    VkFramebuffer m_handle;
+};
+
+class vk_fence
+{
+public:
+    explicit vk_fence(const vk_device &device)
+        : m_device(device)
+    {
+        VkFenceCreateInfo fence_info = {
+            VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, nullptr, 0,
+        };
+        VkResult res = vkCreateFence(device.get_handle(), &fence_info, nullptr, &m_handle);
+        if (res != VK_SUCCESS) {
+            throw vk_exception("Failed to create fence: {}\n", res);
+        }
+    }
+
+    ~vk_fence()
+    {
+        vkDestroyFence(m_device.get_handle(), m_handle, nullptr);
+    }
+
+    VkFence get_handle() const { return m_handle; }
+
+private:
+    VkFence m_handle;
+    const vk_device &m_device;
+};
 
 
 vk_surface create_surface(window &window, const vk_instance &instance, vk_physical_device *dev, VkSurfaceFormatKHR *format)
@@ -141,115 +318,32 @@ int main(int argc, char **argv)
 
     init_cmd_buf.begin();
 
-    auto buf = vk_buffer(device, vk_buffer::usage::vertex_buffer, 100, 12);
+    struct vertex { float p[3]; };
+
+    auto buf = vk_vertex_buffer<vertex>(device, 3);
     print("mem size {}\n",buf.get_required_memory_size());
     auto memory = vk_device_memory(device, vk_device_memory::property::host_visible,
                                    buf.get_required_memory_size(), buf.get_required_memory_type());
     buf.bind_memory(&memory, 0);
     buf.map([](void *data) {
-        static const float vertices[] = {
-            -1.0f, -1.0f,  0.25f,
-             1.0f, -1.0f,  0.25f,
-             0.0f,  1.0f,  1.0f,
+        static const vertex vertices[] = {
+            { -1.0f, -1.0f,  0.25f, },
+            {  1.0f, -1.0f,  0.25f, },
+            {  0.0f,  1.0f,  1.0f,  }
         };
 
         memcpy(data, vertices, sizeof(vertices));
     });
 
-    auto vertex_shader = vk_shader_module(device, "vert.spv");
-    auto fragment_shader = vk_shader_module(device, "frag.spv");
-
-
-    const VkDescriptorSetLayoutCreateInfo descriptor_layout_info = {
-        VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, //type
-        nullptr, //next
-        0, //flags
-        0, //bindings count
-        nullptr, //bindings
-    };
-    VkDescriptorSetLayout desc_layout;
-    res = vkCreateDescriptorSetLayout(device.get_handle(), &descriptor_layout_info, nullptr, &desc_layout);
-    if (res != VK_SUCCESS) {
-        throw vk_exception("Failed to create the descriptor set layout: {}\n", res);
-    }
-    const VkPipelineLayoutCreateInfo pipeline_layout_create_info = {
-        VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO, //type
-        nullptr, //next
-        0, //flags
-        1, //descriptor set layout count
-        &desc_layout, //descriptor set layouts
-        0, //push constant range count
-        nullptr, //push constant ranges
-    };
-    VkPipelineLayout pipeline_layout;
-    res = vkCreatePipelineLayout(device.get_handle(), &pipeline_layout_create_info, nullptr, &pipeline_layout);
-    if (res != VK_SUCCESS) {
-        throw vk_exception("Failed to create pipeline layout: {}\n", res);
-    }
 
 
 
-    VkAttachmentDescription attachment_desc[] = {
-        {
-            0, //flags
-            format.format, //format
-            VK_SAMPLE_COUNT_1_BIT, //samples
-            VK_ATTACHMENT_LOAD_OP_CLEAR, //load op
-            VK_ATTACHMENT_STORE_OP_STORE, //store op
-            VK_ATTACHMENT_LOAD_OP_DONT_CARE, //stencil load op
-            VK_ATTACHMENT_STORE_OP_DONT_CARE, //stencil store op
-            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, //initial layout
-            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, //final layout
-        }
-    };
-    VkAttachmentReference color_attachments[] = {
-        { 0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, },
-    };
-    VkAttachmentReference resolve_attachments[] = {
-        { VK_ATTACHMENT_UNUSED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, },
-    };
-    const VkAttachmentReference depth_reference = {
-        VK_ATTACHMENT_UNUSED,
-        VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-    };
-    const uint32_t preserve_attachments[] = { 0 };
-    VkSubpassDescription subpass_desc[] = {
-        {
-            0, //flags
-            VK_PIPELINE_BIND_POINT_GRAPHICS, //pipeline bind point
-            0, //input attachments count
-            nullptr, //input attachments
-            1, //color attachments count
-            color_attachments, //color_attachments
-            nullptr, //resolve attachments
-            &depth_reference, //depth stencil attachments
-            0, //preserve attachments count
-            nullptr, //preserve attachments
-        },
-    };
-    VkRenderPassCreateInfo create_info = {
-        VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO, nullptr, 0,
-        1, attachment_desc,
-        1, subpass_desc,
-        0, nullptr,
-    };
+    auto pipeline_layout = vk_pipeline_layout(device);
 
-    VkRenderPass render_pass;
-    res = vkCreateRenderPass(device.get_handle(), &create_info, nullptr, &render_pass);
-    if (res != VK_SUCCESS) {
-        throw vk_exception("Failed to create render pass: {}\n", res);
-    }
+    auto render_pass = vk_renderpass(device, format.format);
 
 
-    VkFenceCreateInfo fence_info = {
-        VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, nullptr, 0,
-    };
-    VkFence fence;
-    res = vkCreateFence(device.get_handle(), &fence_info, nullptr, &fence);
-    if (res != VK_SUCCESS) {
-        throw vk_exception("Failed to create fence: {}\n", res);
-    }
-
+    auto fence = vk_fence(device);
 
 
 
@@ -259,44 +353,7 @@ int main(int argc, char **argv)
     const auto &imgs = swap_chain.get_images();
     print("{} images available\n", imgs.size());
 
-    class vk_framebuffer
-    {
-    public:
-        vk_framebuffer(const vk_device &device, const vk_image &img, VkRenderPass rpass)
-            : m_device(device)
-            , m_image(img)
-            , m_view(m_image.create_image_view())
-        {
-            VkImageView view_handle = m_view.get_handle();
-            VkFramebufferCreateInfo info = {
-                VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO, //type
-                nullptr, //next
-                0, //flags
-                rpass, //render pass
-                1, //attachment count
-                &view_handle, //attachments
-                m_image.get_width(), //width
-                m_image.get_height(), //height
-                1, //layers
-            };
-            VkResult res = vkCreateFramebuffer(m_device.get_handle(), &info, nullptr, &m_handle);
-            if (res != VK_SUCCESS) {
-                throw vk_exception("Failed to create framebuffer: {}\n", res);
-            }
-        }
 
-        uint32_t get_width() const { return m_image.get_width(); }
-        uint32_t get_height() const { return m_image.get_height(); }
-
-        const vk_image &get_image() const { return m_image; }
-        VkFramebuffer get_handle() const { return m_handle; }
-
-    private:
-        const vk_device &m_device;
-        const vk_image &m_image;
-        vk_image_view m_view;
-        VkFramebuffer m_handle;
-    };
 
     auto buffers = vector<vk_framebuffer>();
     buffers.reserve(imgs.size());
@@ -312,7 +369,8 @@ int main(int argc, char **argv)
 
 
 
-
+    auto vertex_shader = vk_shader_module(device, "vert.spv");
+    auto fragment_shader = vk_shader_module(device, "frag.spv");
 
     VkPipelineShaderStageCreateInfo shader_stages[2];
     memset(&shader_stages, 0, 2 * sizeof(VkPipelineShaderStageCreateInfo));
@@ -326,6 +384,7 @@ int main(int argc, char **argv)
     shader_stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
     shader_stages[1].module = fragment_shader.get_handle();
     shader_stages[1].pName = "main";
+
 
     VkVertexInputBindingDescription vs_binding_desc[1] = {
         {
@@ -458,8 +517,8 @@ int main(int argc, char **argv)
         nullptr, //pDepthStencilState is a pointer to an instance of the VkPipelineDepthStencilStateCreateInfo structure, or NULL if the pipeline has rasterization disabled or if the subpass of the render pass the pipeline is created against does not use a depth/stencil attachment
         &colorblend_info, // pColorBlendState is a pointer to an instance of the VkPipelineColorBlendStateCreateInfo structure, or NULL if the pipeline has rasterization disabled or if the subpass of the render pass the pipeline is created against does not use any color attachments
         &dynamicstate_info, //pDynamicState is a pointer to VkPipelineDynamicStateCreateInfo and is used to indicate which properties of the pipeline state object are dynamic and can be changed independently of the pipeline state. This can be NULL, which means no state in the pipeline is considered dynamic
-        pipeline_layout, //layout is the description of binding locations used by both the pipeline and descriptor sets used with the pipeline
-        render_pass, //renderPass is a handle to a render pass object describing the environment in which the pipeline will be used; the pipeline can be used with an instance of any render pass compatible with the one provided. See Render Pass Compatibility for more information
+        pipeline_layout.get_handle(), //layout is the description of binding locations used by both the pipeline and descriptor sets used with the pipeline
+        render_pass.get_handle(), //renderPass is a handle to a render pass object describing the environment in which the pipeline will be used; the pipeline can be used with an instance of any render pass compatible with the one provided. See Render Pass Compatibility for more information
         0, //subpass is the index of the subpass in renderPass where this pipeline will be used
         VK_NULL_HANDLE, //basePipelineHandle is a pipeline to derive from
         0, //basePipelineIndex is an index into the pCreateInfos parameter to use as a pipeline to derive from
@@ -534,14 +593,14 @@ int main(int argc, char **argv)
     VkRenderPassBeginInfo render_pass_begin_info = {
         VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, //type
         nullptr, //next
-        render_pass, //render pass
+        render_pass.get_handle(), //render pass
         framebuffer.get_handle(), //framebuffer
         { { 0, 0 }, { framebuffer.get_width(), framebuffer.get_height() } }, //render area
         1, //clear value count
         clear_values, //clear values
     };
 
-    print("pass {} fb {}\n",(void*)render_pass,(void*)framebuffer.get_handle());
+    print("pass {} fb {}\n",(void*)render_pass.get_handle(),(void*)framebuffer.get_handle());
 
     vkCmdBeginRenderPass(cmd_buffer.get_handle(), &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 

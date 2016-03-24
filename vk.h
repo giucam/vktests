@@ -202,9 +202,10 @@ private:
 class vk_surface
 {
 public:
-    vk_surface(const window &window, VkSurfaceKHR surface);
+    vk_surface(const vk_instance &instance, const window &window, VkSurfaceKHR surface);
     vk_surface(const vk_surface &) = delete;
     vk_surface(vk_surface &&s);
+    ~vk_surface();
 
     bool supports_present(vk_physical_device *device, int queue_family) const;
     std::vector<VkSurfaceFormatKHR> get_formats(vk_physical_device *device) const;
@@ -213,6 +214,7 @@ public:
     VkSurfaceKHR get_handle() const { return m_handle; }
 
 private:
+    const vk_instance &m_instance;
     const window &m_window;
     VkSurfaceKHR m_handle;
 };
@@ -316,8 +318,6 @@ public:
 
     VkBuffer get_handle() const { return m_handle; }
 
-
-
 private:
     const vk_device &m_device;
     VkBuffer m_handle;
@@ -325,6 +325,14 @@ private:
     vk_device_memory *m_mem;
     uint64_t m_mem_offset;
     uint32_t m_stride;
+};
+
+template<class vertex>
+class vk_vertex_buffer : public vk_buffer
+{
+public:
+    vk_vertex_buffer(const vk_device &device, uint64_t num_elements)
+        : vk_buffer(device, vk_buffer::usage::vertex_buffer, num_elements * sizeof(vertex), sizeof(vertex)) {}
 };
 
 class vk_shader_module
