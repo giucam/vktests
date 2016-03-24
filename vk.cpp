@@ -500,9 +500,10 @@ uint32_t vk_device_memory::get_mem_index(property props, uint32_t type_bits)
 //--
 
 
-vk_buffer::vk_buffer(const vk_device &device, usage u, uint64_t size)
+vk_buffer::vk_buffer(const vk_device &device, usage u, uint64_t size, uint32_t stride)
          : m_device(device)
          , m_mem(nullptr)
+         , m_stride(stride)
 {
     const VkBufferCreateInfo buf_info = {
         VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, //type

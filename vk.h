@@ -302,7 +302,7 @@ public:
         indirect_buffer = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT,
     };
 
-    vk_buffer(const vk_device &device, usage u, uint64_t size);
+    vk_buffer(const vk_device &device, usage u, uint64_t size, uint32_t stride);
     ~vk_buffer();
 
     uint64_t get_required_memory_size() const { return m_mem_reqs.size; }
@@ -311,6 +311,8 @@ public:
 
     void bind_memory(vk_device_memory *mem, uint64_t offset);
     void map(const std::function<void (void *)> &cp);
+
+    uint32_t stride() const { return m_stride; }
 
     VkBuffer get_handle() const { return m_handle; }
 
@@ -322,6 +324,7 @@ private:
     VkMemoryRequirements m_mem_reqs;
     vk_device_memory *m_mem;
     uint64_t m_mem_offset;
+    uint32_t m_stride;
 };
 
 class vk_shader_module

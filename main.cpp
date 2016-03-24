@@ -141,16 +141,16 @@ int main(int argc, char **argv)
 
     init_cmd_buf.begin();
 
-    auto buf = vk_buffer(device, vk_buffer::usage::vertex_buffer, 10);
+    auto buf = vk_buffer(device, vk_buffer::usage::vertex_buffer, 100, 12);
     print("mem size {}\n",buf.get_required_memory_size());
     auto memory = vk_device_memory(device, vk_device_memory::property::host_visible,
                                    buf.get_required_memory_size(), buf.get_required_memory_type());
     buf.bind_memory(&memory, 0);
     buf.map([](void *data) {
         static const float vertices[] = {
-            -1.0f, -1.0f,
-            1.0f, -1.0f,
-            0.0f,  1.0f,
+            -1.0f, -1.0f,  0.25f,
+             1.0f, -1.0f,  0.25f,
+             0.0f,  1.0f,  1.0f,
         };
 
         memcpy(data, vertices, sizeof(vertices));
@@ -307,7 +307,176 @@ int main(int argc, char **argv)
 
 
     uint32_t index = swap_chain.acquire_next_image_index();
-    vk_framebuffer &buffer = buffers[index];
+    vk_framebuffer &framebuffer = buffers[index];
+
+
+
+
+
+
+    VkPipelineShaderStageCreateInfo shader_stages[2];
+    memset(&shader_stages, 0, 2 * sizeof(VkPipelineShaderStageCreateInfo));
+
+    shader_stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    shader_stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+    shader_stages[0].module = vertex_shader.get_handle();
+    shader_stages[0].pName = "main";
+
+    shader_stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    shader_stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    shader_stages[1].module = fragment_shader.get_handle();
+    shader_stages[1].pName = "main";
+
+    VkVertexInputBindingDescription vs_binding_desc[1] = {
+        {
+            0, //binding number
+            buf.stride(), //stride
+            VK_VERTEX_INPUT_RATE_VERTEX, //input rate
+        },
+    };
+
+    VkVertexInputAttributeDescription vs_attribute_desc[1] = {
+        {
+            0, //location
+            0, //binding number
+            VK_FORMAT_R32G32B32_SFLOAT, //format
+            0, //offset
+        },
+    };
+
+    VkPipelineVertexInputStateCreateInfo vertex_state_info = {
+        VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO, //type
+        nullptr, //next
+        0, //flags
+        1, //binding description count
+        vs_binding_desc, //binding descriptions
+        1, //attribute description count
+        vs_attribute_desc,
+    };
+
+    VkPipelineInputAssemblyStateCreateInfo input_assembly_info = {
+        VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO, //type
+        nullptr, //next
+        0, //flags
+        VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, //topology
+        false, //primitive restart enable
+    };
+
+    VkPipelineViewportStateCreateInfo viewport_info = {
+        VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO, //type
+        nullptr, //type
+        0, //flags
+        1, //viewport count
+        nullptr, //vieports
+        1, //scissor count
+        nullptr, //scissors
+    };
+
+    VkPipelineRasterizationStateCreateInfo rasterization_info = {
+        VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO, //type
+        nullptr, //next
+        0, //flags
+        false, //depth clamp enable
+        false, //rasterizer discard enable
+        VK_POLYGON_MODE_FILL, //polygon mode
+        VK_CULL_MODE_NONE, //cull mode
+        VK_FRONT_FACE_CLOCKWISE, //front face
+        false, //depth bias enable
+        0, //depth bias constant factor
+        0, //depth bias clamp
+        0, //depth bias slope factor
+        0, //line width
+    };
+
+    VkPipelineMultisampleStateCreateInfo multisample_info = {
+        VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO, //type
+        nullptr, //next
+        0, //flags
+        VK_SAMPLE_COUNT_1_BIT, //rasterizationSamples is a VkSampleCountFlagBits specifying the number of samples per pixel used in rasterization.
+        false,                 //sampleShadingEnable specifies that fragment shading executes per-sample if VK_TRUE, or per-fragment if VK_FALSE,
+                               //as described in Sample Shading.
+        0,                     //minSampleShading is the minimum fraction of sample shading, as described in Sample Shading.
+        nullptr,               //pSampleMask is a bitmask of static coverage information that is ANDed with the coverage information generated during
+                               //rasterization, as described in Sample Mask.
+        0,                     //alphaToCoverageEnable controls whether a temporary coverage value is generated based on the alpha component of the
+                               //fragment’s first color output as specified in the Multisample Coverage section.
+        0,                     //alphaToOneEnable controls whether the alpha component of the fragment’s first color output is replaced with one as
+                               //described in Multisample Coverage.
+    };
+
+    VkPipelineColorBlendAttachmentState colorblend_attachment_info[1] = {
+        {
+            false,                // blendEnable controls whether blending is enabled for the corresponding color attachment. If blending is not enabled, the source
+                                  //fragment’s color for that attachment is passed through unmodified
+            VK_BLEND_FACTOR_ZERO, //srcColorBlendFactor selects which blend factor is used to determine the source factors Sr,Sg,Sb
+            VK_BLEND_FACTOR_ZERO, //dstColorBlendFactor selects which blend factor is used to determine the destination factors Dr,Dg,Db
+            VK_BLEND_OP_ADD,      //colorBlendOp selects which blend operation is used to calculate the RGB values to write to the color attachment
+            VK_BLEND_FACTOR_ZERO, //srcAlphaBlendFactor selects which blend factor is used to determine the source factor Sa
+            VK_BLEND_FACTOR_ZERO, //dstAlphaBlendFactor selects which blend factor is used to determine the destination factor Da
+            VK_BLEND_OP_ADD,      //alphaBlendOp selects which blend operation is use to calculate the alpha values to write to the color attachment
+            0xf,                  //colorWriteMask is a bitmask selecting which of the R, G, B, and/or A components are enabled for writing, as described later in this chapter
+        },
+    };
+
+    VkPipelineColorBlendStateCreateInfo colorblend_info = {
+        VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO, //Type is the type of this structure.
+        nullptr,                                                  //pNext is NULL or a pointer to an extension-specific structure.
+        0,                                                        //flags is reserved for future use.
+        0,                                                        //logicOpEnable controls whether to apply Logical Operations.
+        VK_LOGIC_OP_CLEAR,                                        //logicOp selects which logical operation to apply.
+        1,                                                        //attachmentCount is the number of VkPipelineColorBlendAttachmentState elements in pAttachments.
+                                                                  //This value must equal the colorAttachmentCount for the subpass in which this pipeline is used.
+        colorblend_attachment_info,                               //pAttachments: pointer to array of per target attachment states
+        {0,0,0,0},                                                //blendConstants is an array of four values used as the R, G, B, and A components of the blend
+                                                                  //constant that are used in blending, depending on the blend factor.
+    };
+
+    VkDynamicState dynamic_states[] = {
+        VK_DYNAMIC_STATE_VIEWPORT,
+        VK_DYNAMIC_STATE_SCISSOR,
+    };
+    VkPipelineDynamicStateCreateInfo dynamicstate_info = {
+        VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO, //sType is the type of this structure
+        nullptr, //pNext is NULL or a pointer to an extension-specific structure
+        0, //flags is reserved for future use
+        2, // dynamicStateCount is the number of elements in the pDynamicStates array
+        dynamic_states, //vpDynamicStates is an array of VkDynamicState enums which indicate which pieces of pipeline state will use the values from dynamic state commands rather than from the pipeline state creation info.
+    };
+
+    VkGraphicsPipelineCreateInfo pipeline_create_info = {
+        VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO, //type
+        nullptr, //next
+        0, //flags
+        2, //shader stage count
+        shader_stages, //shader stages
+        &vertex_state_info, //vertex input state
+        &input_assembly_info, //input assemby state
+        nullptr, //tessellation state
+        &viewport_info, //viewport state
+        &rasterization_info, //rasterization state
+        &multisample_info, //pMultisampleState is a pointer to an instance of the VkPipelineMultisampleStateCreateInfo, or NULL if the pipeline has rasterization disabled.
+        nullptr, //pDepthStencilState is a pointer to an instance of the VkPipelineDepthStencilStateCreateInfo structure, or NULL if the pipeline has rasterization disabled or if the subpass of the render pass the pipeline is created against does not use a depth/stencil attachment
+        &colorblend_info, // pColorBlendState is a pointer to an instance of the VkPipelineColorBlendStateCreateInfo structure, or NULL if the pipeline has rasterization disabled or if the subpass of the render pass the pipeline is created against does not use any color attachments
+        &dynamicstate_info, //pDynamicState is a pointer to VkPipelineDynamicStateCreateInfo and is used to indicate which properties of the pipeline state object are dynamic and can be changed independently of the pipeline state. This can be NULL, which means no state in the pipeline is considered dynamic
+        pipeline_layout, //layout is the description of binding locations used by both the pipeline and descriptor sets used with the pipeline
+        render_pass, //renderPass is a handle to a render pass object describing the environment in which the pipeline will be used; the pipeline can be used with an instance of any render pass compatible with the one provided. See Render Pass Compatibility for more information
+        0, //subpass is the index of the subpass in renderPass where this pipeline will be used
+        VK_NULL_HANDLE, //basePipelineHandle is a pipeline to derive from
+        0, //basePipelineIndex is an index into the pCreateInfos parameter to use as a pipeline to derive from
+    };
+
+    VkPipeline pipeline;
+    res = vkCreateGraphicsPipelines(device.get_handle(), nullptr, 1, &pipeline_create_info, nullptr, &pipeline);
+    if (res != VK_SUCCESS) {
+        throw vk_exception("Failed to create the graphics pipeline: {}\n", res);
+    }
+
+
+
+
+
+
+
 
 
     VkImageMemoryBarrier image_memory_barrier = {
@@ -315,11 +484,11 @@ int main(int argc, char **argv)
         nullptr, //next
         0, //src access mask
         VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, //dst access mask
-        VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, //old image layout
-        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, //new image layout
+        VK_IMAGE_LAYOUT_UNDEFINED, //old image layout
+        VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, //new image layout
         0, //src queue family index
         0, //dst queue family index
-        buffer.get_image().get_handle(), //image
+        framebuffer.get_image().get_handle(), //image
         { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 }, //subresource range
     };
 
@@ -366,15 +535,42 @@ int main(int argc, char **argv)
         VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, //type
         nullptr, //next
         render_pass, //render pass
-        buffer.get_handle(), //framebuffer
-        { { 0, 0 }, { buffer.get_width(), buffer.get_height() } }, //render area
+        framebuffer.get_handle(), //framebuffer
+        { { 0, 0 }, { framebuffer.get_width(), framebuffer.get_height() } }, //render area
         1, //clear value count
         clear_values, //clear values
     };
 
-    print("pass {} fb {}\n",(void*)render_pass,(void*)buffer.get_handle());
+    print("pass {} fb {}\n",(void*)render_pass,(void*)framebuffer.get_handle());
 
     vkCmdBeginRenderPass(cmd_buffer.get_handle(), &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
+
+    vkCmdBindPipeline(cmd_buffer.get_handle(), VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+//     vkCmdBindDescriptorSets(cmd_buffer.get_handle(), VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &desc_layout, 0, nullptr);
+    VkViewport viewport;
+    memset(&viewport, 0, sizeof(viewport));
+    viewport.height = (float)framebuffer.get_width();
+    viewport.width = (float)framebuffer.get_height();
+    viewport.minDepth = (float)0.0f;
+    viewport.maxDepth = (float)1.0f;
+    vkCmdSetViewport(cmd_buffer.get_handle(), 0, 1, &viewport);
+
+    VkRect2D scissor;
+    memset(&scissor, 0, sizeof(scissor));
+    scissor.extent.width = framebuffer.get_width();
+    scissor.extent.height = framebuffer.get_height();
+    scissor.offset.x = 0;
+    scissor.offset.y = 0;
+    vkCmdSetScissor(cmd_buffer.get_handle(), 0, 1, &scissor);
+
+    VkDeviceSize offsets[1] = {0};
+    VkBuffer vertexbuffers[] = { buf.get_handle() };
+    vkCmdBindVertexBuffers(cmd_buffer.get_handle(), 0, 1, vertexbuffers, offsets);
+
+    vkCmdDraw(cmd_buffer.get_handle(), 3, 1, 0, 0);
+    vkCmdEndRenderPass(cmd_buffer.get_handle());
+
+
     cmd_buffer.end();
 
 
