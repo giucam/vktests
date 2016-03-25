@@ -369,22 +369,69 @@ int main(int argc, char **argv)
 
 
 
-    auto vertex_shader = vk_shader_module(device, "vert.spv");
-    auto fragment_shader = vk_shader_module(device, "frag.spv");
+    class vk_shader_program
+    {
+    public:
+        explicit vk_shader_program(const vk_device &device)
+            : m_device(device)
+        {
+        }
 
-    VkPipelineShaderStageCreateInfo shader_stages[2];
-    memset(&shader_stages, 0, 2 * sizeof(VkPipelineShaderStageCreateInfo));
+        void add_stage(const vk_shader_module &shader, stringview entrypoint)
+        {
+            if (m_device != shader.get_device()) {
+                throw vk_exception("Trying to insert a shader in a program with a different device.");
+            }
+            for (const shader_stage &stg: m_stages) {
+                if (stg.shader.get_stage() == shader.get_stage()) {
+                    throw vk_exception("Shader program stage {} already set.", (int)shader.get_stage());
+                }
+            }
 
-    shader_stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    shader_stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
-    shader_stages[0].module = vertex_shader.get_handle();
-    shader_stages[0].pName = "main";
+            m_stages.emplace_back(shader, entrypoint.to_string());
+        }
 
-    shader_stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    shader_stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-    shader_stages[1].module = fragment_shader.get_handle();
-    shader_stages[1].pName = "main";
+        void add_stage(vk_shader_module::stage s, stringview filename, stringview entrypoint)
+        {
+            add_stage(vk_shader_module(m_device, s, filename), entrypoint);
+        }
 
+        uint32_t get_num_stages() const { return m_stages.size(); }
+
+        void get_pipeline_info(VkPipelineShaderStageCreateInfo *info)
+        {
+            for (const shader_stage &stg: m_stages) {
+                info->sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+                info->pNext = nullptr;
+                info->flags = 0;
+                info->stage = (VkShaderStageFlagBits)stg.shader.get_stage();
+                info->module = stg.shader.get_handle();
+                info->pName = stg.entrypoint.data();
+                info->pSpecializationInfo = nullptr;
+                ++info;
+            }
+        }
+
+    private:
+        const vk_device &m_device;
+        struct shader_stage {
+            shader_stage(const vk_shader_module &module, const std::string &ep)
+                : shader(module)
+                , entrypoint(ep)
+            {}
+            vk_shader_module shader;
+            std::string entrypoint;
+        };
+        std::vector<shader_stage> m_stages;
+    };
+
+    auto program = vk_shader_program(device);
+    program.add_stage(vk_shader_module::stage::vertex, "vert.spv", "main");
+    program.add_stage(vk_shader_module::stage::fragment, "frag.spv", "main");
+
+    int num_stages = program.get_num_stages();
+    auto shader_stages = std::vector<VkPipelineShaderStageCreateInfo>(num_stages);
+    program.get_pipeline_info(shader_stages.data());
 
     VkVertexInputBindingDescription vs_binding_desc[1] = {
         {
@@ -506,8 +553,8 @@ int main(int argc, char **argv)
         VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO, //type
         nullptr, //next
         0, //flags
-        2, //shader stage count
-        shader_stages, //shader stages
+        (uint32_t)shader_stages.size(), //shader stage count
+        shader_stages.data(), //shader stages
         &vertex_state_info, //vertex input state
         &input_assembly_info, //input assemby state
         nullptr, //tessellation state

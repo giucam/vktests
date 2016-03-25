@@ -115,6 +115,9 @@ private:
     friend class vk_physical_device;
 };
 
+inline bool operator==(const vk_device &a, const vk_device &b) { return a.get_handle() == b.get_handle(); }
+inline bool operator!=(const vk_device &a, const vk_device &b) { return a.get_handle() != b.get_handle(); }
+
 class vk_queue_family_properties
 {
 public:
@@ -338,15 +341,26 @@ public:
 class vk_shader_module
 {
 public:
-    vk_shader_module(const vk_device &device, const char *code, size_t size);
-    vk_shader_module(const vk_device &device, stringview file);
+    enum class stage {
+        vertex = VK_SHADER_STAGE_VERTEX_BIT,
+        fragment = VK_SHADER_STAGE_FRAGMENT_BIT,
+        geometry = VK_SHADER_STAGE_GEOMETRY_BIT,
+        tessellation_control = VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT,
+        tessellation_evaluation = VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT,
+        compute = VK_SHADER_STAGE_COMPUTE_BIT,
+    };
+
+    vk_shader_module(const vk_device &device, stage s, const char *code, size_t size);
+    vk_shader_module(const vk_device &device, stage s, stringview file);
     ~vk_shader_module();
 
-    VkShaderModule get_handle() const { return m_handle; }
+    const vk_device &get_device() const;
+    stage get_stage() const;
+    VkShaderModule get_handle() const;
 
 private:
-    void create(const char *code, size_t size);
+    void create(const vk_device &dev, stage s, const char *code, size_t size);
 
-    const vk_device &m_device;
-    VkShaderModule m_handle;
+    struct state;
+    std::shared_ptr<const state> m_state;
 };

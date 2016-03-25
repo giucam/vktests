@@ -555,14 +555,31 @@ void vk_buffer::map(const std::function<void (void *)> &cb)
 //--
 
 
-vk_shader_module::vk_shader_module(const vk_device &dev, const char *code, size_t size)
-                : m_device(dev)
+struct vk_shader_module::state
 {
-    create(code, size);
+    state(const vk_device &dev, stage s, VkShaderModule h)
+        : device(dev)
+        , stg(s)
+        , handle(h)
+    {
+    }
+
+    ~state()
+    {
+        vkDestroyShaderModule(device.get_handle(), handle, nullptr);
+    }
+
+    const vk_device &device;
+    vk_shader_module::stage stg;
+    VkShaderModule handle;
+};
+
+vk_shader_module::vk_shader_module(const vk_device &dev, stage s, const char *code, size_t size)
+{
+    create(dev, s, code, size);
 }
 
-vk_shader_module::vk_shader_module(const vk_device &dev, stringview file)
-                : m_device(dev)
+vk_shader_module::vk_shader_module(const vk_device &dev, stage s, stringview file)
 {
     FILE *fp = fopen(file.to_string().data(), "rb");
     if (!fp) {
@@ -582,7 +599,7 @@ vk_shader_module::vk_shader_module(const vk_device &dev, stringview file)
     fclose(fp);
 
     try {
-        create(code, size);
+        create(dev, s, code, size);
     } catch (...) {
         delete[] code;
         throw;
@@ -593,10 +610,24 @@ vk_shader_module::vk_shader_module(const vk_device &dev, stringview file)
 
 vk_shader_module::~vk_shader_module()
 {
-    vkDestroyShaderModule(m_device.get_handle(), m_handle, nullptr);
 }
 
-void vk_shader_module::create(const char *code, size_t size)
+const vk_device &vk_shader_module::get_device() const
+{
+    return m_state->device;
+}
+
+vk_shader_module::stage vk_shader_module::get_stage() const
+{
+    return m_state->stg;
+}
+
+VkShaderModule vk_shader_module::get_handle() const
+{
+    return m_state->handle;
+}
+
+void vk_shader_module::create(const vk_device &dev, stage s, const char *code, size_t size)
 {
     VkShaderModuleCreateInfo info = {
         VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO, //type
@@ -605,10 +636,13 @@ void vk_shader_module::create(const char *code, size_t size)
         size, //size
         (const uint32_t *)code, //code
     };
-    VkResult res = vkCreateShaderModule(m_device.get_handle(), &info, nullptr, &m_handle);
+    VkShaderModule handle;
+    VkResult res = vkCreateShaderModule(dev.get_handle(), &info, nullptr, &handle);
     if (res != VK_SUCCESS) {
         throw vk_exception("Failed to create shader module: {}\n", res);
     }
+
+    m_state = std::make_shared<state>(dev, s, handle);
 }
 
 
