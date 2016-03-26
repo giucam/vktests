@@ -318,7 +318,7 @@ int main(int argc, char **argv)
 
     init_cmd_buf.begin();
 
-    struct vertex { float p[3]; };
+    struct vertex { float p[3]; float c[4]; };
 
     auto buf = vk_vertex_buffer<vertex>(device, 3);
     print("mem size {}\n",buf.get_required_memory_size());
@@ -327,9 +327,9 @@ int main(int argc, char **argv)
     buf.bind_memory(&memory, 0);
     buf.map([](void *data) {
         static const vertex vertices[] = {
-            { -1.0f, -1.0f,  0.25f, },
-            {  0.0f,  1.0f,  1.0f,  },
-            {  1.0f, -1.0f,  0.25f, },
+            { { -1.0f, -1.0f,  0.25f, }, { 1, 0, 0, 1, }, },
+            { {  0.0f,  1.0f,  1.0f,  }, { 0, 1, 0, 1, }, },
+            { {  1.0f, -1.0f,  0.25f, }, { 0, 0, 1, 1, }, },
         };
 
         memcpy(data, vertices, sizeof(vertices));
@@ -391,7 +391,6 @@ int main(int argc, char **argv)
             point = VK_POLYGON_MODE_POINT,
         };
         enum class cull_mode {
-            none = VK_CULL_MODE_NONE,
             front = VK_CULL_MODE_FRONT_BIT,
             back = VK_CULL_MODE_BACK_BIT,
             front_and_back = VK_CULL_MODE_FRONT_AND_BACK,
@@ -413,8 +412,9 @@ int main(int argc, char **argv)
         explicit vk_graphics_pipeline(const vk_device &device)
             : m_device(device)
             , m_topology(topology::triangle_list)
+            , m_primitive_restart(false)
             , m_polygon_mode(polygon_mode::fill)
-            , m_cull({ cull_mode::back, front_face::counter_clockwise })
+            , m_cull({ VK_CULL_MODE_NONE, front_face::counter_clockwise })
         {
         }
 
@@ -459,10 +459,15 @@ int main(int argc, char **argv)
             m_polygon_mode = mode;
         }
 
-        void set_cull_mode(cull_mode mode, front_face front)
+        void enable_culling(cull_mode mode, front_face front)
         {
-            m_cull.mode = mode;
-            m_cull.front= front;
+            m_cull.mode = (VkCullModeFlagBits)mode;
+            m_cull.front = front;
+        }
+
+        void disable_culling()
+        {
+            m_cull.mode = VK_CULL_MODE_NONE;;
         }
 
         VkPipeline get_handle() const { return m_handle; }
@@ -502,7 +507,7 @@ int main(int argc, char **argv)
                 false, //depth clamp enable
                 false, //rasterizer discard enable
                 (VkPolygonMode)m_polygon_mode, //polygon mode
-                (VkCullModeFlagBits)m_cull.mode, //cull mode
+                m_cull.mode, //cull mode
                 (VkFrontFace)m_cull.front, //front face
                 false, //depth bias enable
                 0, //depth bias constant factor
@@ -630,7 +635,7 @@ int main(int argc, char **argv)
             info->flags = 0;
             info->vertexBindingDescriptionCount = m_bindings.size();
             info->pVertexBindingDescriptions = binding_desc;
-            info->vertexAttributeDescriptionCount = m_bindings.size();
+            info->vertexAttributeDescriptionCount = m_attributes.size();
             info->pVertexAttributeDescriptions = attr_desc;
 
             int i = 0;
@@ -646,6 +651,7 @@ int main(int argc, char **argv)
                 attr_desc->binding = attr.bind;
                 attr_desc->format = attr.format;
                 attr_desc->offset = attr.offset;
+                ++attr_desc;
             }
         }
 
@@ -683,7 +689,7 @@ int main(int argc, char **argv)
         bool m_primitive_restart;
         polygon_mode m_polygon_mode;
         struct {
-            cull_mode mode;
+            VkCullModeFlagBits mode;
             front_face front;
         } m_cull;
     };
@@ -694,6 +700,7 @@ int main(int argc, char **argv)
 
     auto binding = pipeline.add_binding(buf);
     pipeline.add_attribute(binding, 0, VK_FORMAT_R32G32B32_SFLOAT, 0);
+    pipeline.add_attribute(binding, 1, VK_FORMAT_R32G32B32A32_SFLOAT, 12);
 
     pipeline.set_primitive_mode(vk_graphics_pipeline::triangle_list, false);
 
