@@ -328,7 +328,7 @@ int main(int argc, char **argv)
     buf.map([](void *data) {
         static const vertex vertices[] = {
             { { -1.0f, -1.0f,  0.25f, }, { 1, 0, 0, 1, }, },
-            { {  0.0f,  1.0f,  1.0f,  }, { 0, 1, 0, 1, }, },
+            { {  0.0f,  1.0f,  1.0f,  }, { 0, 1, 0, 0, }, },
             { {  1.0f, -1.0f,  0.25f, }, { 0, 0, 1, 1, }, },
         };
 
@@ -415,6 +415,7 @@ int main(int argc, char **argv)
             , m_primitive_restart(false)
             , m_polygon_mode(polygon_mode::fill)
             , m_cull({ VK_CULL_MODE_NONE, front_face::counter_clockwise })
+            , m_blending({ false })
         {
         }
 
@@ -467,7 +468,12 @@ int main(int argc, char **argv)
 
         void disable_culling()
         {
-            m_cull.mode = VK_CULL_MODE_NONE;;
+            m_cull.mode = VK_CULL_MODE_NONE;
+        }
+
+        void set_blending(bool enabled)
+        {
+            m_blending.enabled = enabled;
         }
 
         VkPipeline get_handle() const { return m_handle; }
@@ -534,13 +540,13 @@ int main(int argc, char **argv)
 
             VkPipelineColorBlendAttachmentState colorblend_attachment_info[1] = {
                 {
-                    false,                // blendEnable controls whether blending is enabled for the corresponding color attachment. If blending is not enabled, the source
+                    m_blending.enabled, // blendEnable controls whether blending is enabled for the corresponding color attachment. If blending is not enabled, the source
                                         //fragment’s color for that attachment is passed through unmodified
-                    VK_BLEND_FACTOR_ZERO, //srcColorBlendFactor selects which blend factor is used to determine the source factors Sr,Sg,Sb
-                    VK_BLEND_FACTOR_ZERO, //dstColorBlendFactor selects which blend factor is used to determine the destination factors Dr,Dg,Db
+                    VK_BLEND_FACTOR_SRC_ALPHA, //srcColorBlendFactor selects which blend factor is used to determine the source factors Sr,Sg,Sb
+                    VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA, //dstColorBlendFactor selects which blend factor is used to determine the destination factors Dr,Dg,Db
                     VK_BLEND_OP_ADD,      //colorBlendOp selects which blend operation is used to calculate the RGB values to write to the color attachment
                     VK_BLEND_FACTOR_ZERO, //srcAlphaBlendFactor selects which blend factor is used to determine the source factor Sa
-                    VK_BLEND_FACTOR_ZERO, //dstAlphaBlendFactor selects which blend factor is used to determine the destination factor Da
+                    VK_BLEND_FACTOR_ONE, //dstAlphaBlendFactor selects which blend factor is used to determine the destination factor Da
                     VK_BLEND_OP_ADD,      //alphaBlendOp selects which blend operation is use to calculate the alpha values to write to the color attachment
                     0xf,                  //colorWriteMask is a bitmask selecting which of the R, G, B, and/or A components are enabled for writing, as described later in this chapter
                 },
@@ -692,6 +698,10 @@ int main(int argc, char **argv)
             VkCullModeFlagBits mode;
             front_face front;
         } m_cull;
+
+        struct {
+            bool enabled;
+        } m_blending;
     };
 
     auto pipeline = vk_graphics_pipeline(device);
@@ -703,6 +713,7 @@ int main(int argc, char **argv)
     pipeline.add_attribute(binding, 1, VK_FORMAT_R32G32B32A32_SFLOAT, 12);
 
     pipeline.set_primitive_mode(vk_graphics_pipeline::triangle_list, false);
+    pipeline.set_blending(true);
 
     pipeline.create(render_pass, pipeline_layout);
 
@@ -765,8 +776,8 @@ int main(int argc, char **argv)
 
     VkClearValue clear_values[1];
     clear_values[0].color.float32[0] = 1.0f;
-    clear_values[0].color.float32[1] = 0.2f;
-    clear_values[0].color.float32[2] = 0.2f;
+    clear_values[0].color.float32[1] = 1.0f;
+    clear_values[0].color.float32[2] = 1.0f;
     clear_values[0].color.float32[3] = 1.0f;
     VkRenderPassBeginInfo render_pass_begin_info = {
         VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, //type
