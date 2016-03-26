@@ -60,6 +60,12 @@ public:
     void begin();
     void end();
 
+    template<class T>
+    void set_parameter(const T &parameter)
+    {
+        parameter.set_in_command_buffer(*this);
+    }
+
     VkCommandBuffer get_handle() const { return m_handle; }
 
 private:
@@ -363,4 +369,17 @@ private:
 
     struct state;
     std::shared_ptr<const state> m_state;
+};
+
+class vk_viewport
+{
+public:
+    vk_viewport(float x, float y, float width, float height, float min_depth = 0.f, float max_depth = 1.f);
+
+    void set_scissor(float x, float y, float width, float height);
+    void set_in_command_buffer(const vk_command_buffer &cmd_buf) const;
+
+private:
+    VkViewport m_handle;
+    VkRect2D m_scissor;
 };

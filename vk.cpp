@@ -646,6 +646,30 @@ void vk_shader_module::create(const vk_device &dev, stage s, const char *code, s
 }
 
 
+//--
+
+
+vk_viewport::vk_viewport(float x, float y, float width, float height, float min_depth, float max_depth)
+           : m_handle({ x, y, width, height, min_depth, max_depth })
+           , m_scissor({ { (int32_t)x, (int32_t)y }, { (uint32_t)width, (uint32_t)height } })
+{
+}
+
+void vk_viewport::set_scissor(float x, float y, float width, float height)
+{
+    m_scissor = { { (int32_t)x, (int32_t)y }, { (uint32_t)width, (uint32_t)height } };
+}
+
+void vk_viewport::set_in_command_buffer(const vk_command_buffer &cmd_buffer) const
+{
+    vkCmdSetViewport(cmd_buffer.get_handle(), 0, 1, &m_handle);
+    vkCmdSetScissor(cmd_buffer.get_handle(), 0, 1, &m_scissor);
+}
+
+
+//--
+
+
 std::ostream &operator<<(std::ostream &os, VkResult v)
 {
 #define CASE(err) case err: os << #err; break;

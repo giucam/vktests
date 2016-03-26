@@ -605,7 +605,7 @@ int main(int argc, char **argv)
             }
         }
 
-        void bind(const vk_command_buffer &cmd_buffer)
+        void set_in_command_buffer(const vk_command_buffer &cmd_buffer) const
         {
             vkCmdBindPipeline(cmd_buffer.get_handle(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_handle);
 
@@ -793,24 +793,14 @@ int main(int argc, char **argv)
 
     vkCmdBeginRenderPass(cmd_buffer.get_handle(), &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
-    pipeline.bind(cmd_buffer);
+    cmd_buffer.set_parameter(pipeline);
 
 //     vkCmdBindDescriptorSets(cmd_buffer.get_handle(), VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &desc_layout, 0, nullptr);
-    VkViewport viewport;
-    memset(&viewport, 0, sizeof(viewport));
-    viewport.height = (float)framebuffer.get_width();
-    viewport.width = (float)framebuffer.get_height();
-    viewport.minDepth = (float)0.0f;
-    viewport.maxDepth = (float)1.0f;
-    vkCmdSetViewport(cmd_buffer.get_handle(), 0, 1, &viewport);
 
-    VkRect2D scissor;
-    memset(&scissor, 0, sizeof(scissor));
-    scissor.extent.width = framebuffer.get_width();
-    scissor.extent.height = framebuffer.get_height();
-    scissor.offset.x = 0;
-    scissor.offset.y = 0;
-    vkCmdSetScissor(cmd_buffer.get_handle(), 0, 1, &scissor);
+
+    auto viewport = vk_viewport(0, 0, framebuffer.get_width(), framebuffer.get_height());
+    cmd_buffer.set_parameter(viewport);
+
 
 
 
