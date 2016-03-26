@@ -30,15 +30,24 @@ public:
     vk_pipeline_layout(const vk_device &device)
         : m_device(device)
     {
+        const VkDescriptorSetLayoutBinding layout_bindings[] = {
+            {
+                0, //binding,
+                VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, //type
+                1, //descriptor count
+                VK_SHADER_STAGE_VERTEX_BIT, //shader stages
+                nullptr, //immutable samplers
+            }
+        };
+
         const VkDescriptorSetLayoutCreateInfo descriptor_layout_info = {
             VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, //type
             nullptr, //next
             0, //flags
-            0, //bindings count
-            nullptr, //bindings
+            1, //bindings count
+            layout_bindings, //bindings
         };
-        VkDescriptorSetLayout desc_layout;
-        VkResult res = vkCreateDescriptorSetLayout(device.get_handle(), &descriptor_layout_info, nullptr, &desc_layout);
+        VkResult res = vkCreateDescriptorSetLayout(device.get_handle(), &descriptor_layout_info, nullptr, &m_descset_layout);
         if (res != VK_SUCCESS) {
             throw vk_exception("Failed to create the descriptor set layout: {}\n", res);
         }
@@ -47,7 +56,7 @@ public:
             nullptr, //next
             0, //flags
             1, //descriptor set layout count
-            &desc_layout, //descriptor set layouts
+            &m_descset_layout, //descriptor set layouts
             0, //push constant range count
             nullptr, //push constant ranges
         };
@@ -62,10 +71,12 @@ public:
         vkDestroyPipelineLayout(m_device.get_handle(), m_handle, nullptr);
     }
 
+    VkDescriptorSetLayout get_descriptor_set_layout() const { return m_descset_layout; }
     VkPipelineLayout get_handle() const { return m_handle; }
 
 private:
     VkPipelineLayout m_handle;
+    VkDescriptorSetLayout m_descset_layout;
     const vk_device &m_device;
 };
 
@@ -323,19 +334,28 @@ int main(int argc, char **argv)
     auto buf = vk_vertex_buffer<vertex>(device, 3);
     print("mem size {}\n",buf.get_required_memory_size());
     auto memory = vk_device_memory(device, vk_device_memory::property::host_visible,
-                                   buf.get_required_memory_size(), buf.get_required_memory_type());
+                                   1024, buf.get_required_memory_type());
     buf.bind_memory(&memory, 0);
     buf.map([](void *data) {
         static const vertex vertices[] = {
-            { { -1.0f, -1.0f,  0.25f, }, { 1, 0, 0, 1, }, },
-            { {  0.0f,  1.0f,  1.0f,  }, { 0, 1, 0, 0, }, },
-            { {  1.0f, -1.0f,  0.25f, }, { 0, 0, 1, 1, }, },
+            { { -1.0f, -1.0f,  0.f, }, { 1, 0, 0, 1, }, },
+            { {  0.0f,  1.0f,  0.f,  }, { 0, 1, 0, 0, }, },
+            { {  1.0f, -1.0f,  0.f, }, { 0, 0, 1, 1, }, },
         };
 
         memcpy(data, vertices, sizeof(vertices));
     });
 
-
+    struct uniform_data {
+        float angle;
+    };
+    auto uniform_buffer = vk_buffer(device, vk_buffer::usage::uniform_buffer, sizeof(uniform_data), 0);
+    assert(uniform_buffer.get_required_memory_type() == buf.get_required_memory_type());
+    uniform_buffer.bind_memory(&memory, buf.get_required_memory_size());
+    uniform_buffer.map([](void *ptr) {
+        uniform_data *data = static_cast<uniform_data *>(ptr);
+        data->angle = 2;
+    });
 
 
     auto pipeline_layout = vk_pipeline_layout(device);
@@ -347,7 +367,64 @@ int main(int argc, char **argv)
 
 
 
+    const VkDescriptorPoolSize descpool_type_counts[] = {
+        {
+            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, //type
+            1, //count
+        },
+    };
+    const VkDescriptorPoolCreateInfo descriptor_pool_info = {
+        VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO, //type
+        nullptr, //next
+        0, //flags
+        1, //max sets
+        1, //poolsizecount
+        descpool_type_counts, //pool sizes
+    };
+    VkDescriptorPool descpool;
+    res = vkCreateDescriptorPool(device.get_handle(), &descriptor_pool_info, nullptr, &descpool);
+    if (res != VK_SUCCESS) {
+        throw vk_exception("Failed to create descriptor pool: {}\n", res);
+    }
 
+    VkDescriptorSetLayout descset_layouts[] = {
+        pipeline_layout.get_descriptor_set_layout(),
+    };
+    VkDescriptorSetAllocateInfo descset_info = {
+        VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO, //type
+        nullptr, //next
+        descpool, //descriptor pool
+        1, //descriptor set count
+        descset_layouts, //descriptor set layouts
+    };
+    VkDescriptorSet descset;
+    res = vkAllocateDescriptorSets(device.get_handle(), &descset_info, &descset);
+    if (res != VK_SUCCESS) {
+        throw vk_exception("Failed to allocate descriptor set: {}\n", res);
+    }
+
+    VkDescriptorBufferInfo descset_buffer_info = {
+        uniform_buffer.get_handle(),
+        0,
+        sizeof(uniform_data),
+    };
+
+    VkWriteDescriptorSet descset_writes[] = {
+        VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, //type
+        nullptr, //next
+        descset, //descriptor set
+        0, //binding
+        0, //starting array element
+        1, //descriptor count
+        VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, //descriptor type
+        nullptr, //image info
+        &descset_buffer_info, //buffer info
+        nullptr, //texel buffer view
+    };
+    vkUpdateDescriptorSets(device.get_handle(), 1, descset_writes, 0, nullptr);
+
+
+    vkDeviceWaitIdle(device.get_handle());
 
     auto swap_chain = swapchain_ext->create_swapchain(surface, format);
     const auto &imgs = swap_chain.get_images();
@@ -745,6 +822,8 @@ int main(int argc, char **argv)
 
     init_cmd_buf.end();
 
+    vkDeviceWaitIdle(device.get_handle());
+
     const VkCommandBuffer cmd_bufs[] = { init_cmd_buf.get_handle() };
     VkSubmitInfo submit_info = {
         VK_STRUCTURE_TYPE_SUBMIT_INFO, //type
@@ -795,7 +874,7 @@ int main(int argc, char **argv)
 
     cmd_buffer.set_parameter(pipeline);
 
-//     vkCmdBindDescriptorSets(cmd_buffer.get_handle(), VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &desc_layout, 0, nullptr);
+    vkCmdBindDescriptorSets(cmd_buffer.get_handle(), VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout.get_handle(), 0, 1, &descset, 0, nullptr);
 
 
     auto viewport = vk_viewport(0, 0, framebuffer.get_width(), framebuffer.get_height());

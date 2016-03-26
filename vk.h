@@ -324,6 +324,7 @@ public:
     void map(const std::function<void (void *)> &cp);
 
     uint32_t stride() const { return m_stride; }
+    uint64_t offset() const { return m_mem_offset; }
 
     VkBuffer get_handle() const { return m_handle; }
 
