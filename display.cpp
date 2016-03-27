@@ -22,6 +22,11 @@ window display::create_window(int width, int height)
     return win;
 }
 
+void display::run(const update_callback &update)
+{
+    m_platform_dpy.m_interface->run(update);
+}
+
 void display::register_platform(platform p, const platform_display_factory &factory)
 {
     s_factories[(int)p] = factory;

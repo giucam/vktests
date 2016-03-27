@@ -163,7 +163,7 @@ int main(int argc, char **argv)
     uniform_buffer.bind_memory(&memory, buf.get_required_memory_size());
     uniform_buffer.map([](void *ptr) {
         uniform_data *data = static_cast<uniform_data *>(ptr);
-        data->angle = 2;
+        data->angle = 0;
     });
 
 
@@ -206,12 +206,6 @@ int main(int argc, char **argv)
     }
 
 
-    uint32_t index = swap_chain.acquire_next_image_index();
-    vk_framebuffer &framebuffer = buffers[index];
-
-
-
-
     auto pipeline = vk_graphics_pipeline(device);
     pipeline.add_stage(vk_shader_module::stage::vertex, "vert.spv", "main");
     pipeline.add_stage(vk_shader_module::stage::fragment, "frag.spv", "main");
@@ -235,21 +229,7 @@ int main(int argc, char **argv)
 
 
 
-    VkImageMemoryBarrier image_memory_barrier = {
-        VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, //type
-        nullptr, //next
-        0, //src access mask
-        VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, //dst access mask
-        VK_IMAGE_LAYOUT_UNDEFINED, //old image layout
-        VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, //new image layout
-        0, //src queue family index
-        0, //dst queue family index
-        framebuffer.get_image().get_handle(), //image
-        { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 }, //subresource range
-    };
 
-    vkCmdPipelineBarrier(init_cmd_buf.get_handle(), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, 0, nullptr, 0,
-                         nullptr, 1, &image_memory_barrier);
 
     init_cmd_buf.end();
 
@@ -282,86 +262,122 @@ int main(int argc, char **argv)
     // === RENDER ===
 
     auto cmd_buffer = cmd_pool.create_command_buffer();
-    cmd_buffer.begin();
 
-    VkClearValue clear_values[1];
-    clear_values[0].color.float32[0] = 1.0f;
-    clear_values[0].color.float32[1] = 1.0f;
-    clear_values[0].color.float32[2] = 1.0f;
-    clear_values[0].color.float32[3] = 1.0f;
-    VkRenderPassBeginInfo render_pass_begin_info = {
-        VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, //type
-        nullptr, //next
-        render_pass.get_handle(), //render pass
-        framebuffer.get_handle(), //framebuffer
-        { { 0, 0 }, { framebuffer.get_width(), framebuffer.get_height() } }, //render area
-        1, //clear value count
-        clear_values, //clear values
+    auto draw = [&cmd_buffer, &queue, &swap_chain, &buffers, &render_pass, &pipeline, &descset, &pipeline_layout, &uniform_buffer]() {
+
+        uniform_buffer.map([](void *ptr) {
+            uniform_data *data = static_cast<uniform_data *>(ptr);
+            data->angle += 0.01;
+        });
+
+        uint32_t index = swap_chain.acquire_next_image_index();
+        const auto &framebuffer = buffers[index];
+
+        print("draw on {}\n",index);
+
+        cmd_buffer.begin();
+
+        VkClearValue clear_values[1];
+        clear_values[0].color.float32[0] = 1.0f;
+        clear_values[0].color.float32[1] = 1.0f;
+        clear_values[0].color.float32[2] = 1.0f;
+        clear_values[0].color.float32[3] = 1.0f;
+        VkRenderPassBeginInfo render_pass_begin_info = {
+            VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, //type
+            nullptr, //next
+            render_pass.get_handle(), //render pass
+            framebuffer.get_handle(), //framebuffer
+            { { 0, 0 }, { framebuffer.get_width(), framebuffer.get_height() } }, //render area
+            1, //clear value count
+            clear_values, //clear values
+        };
+
+        vkCmdBeginRenderPass(cmd_buffer.get_handle(), &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
+
+        cmd_buffer.set_parameter(pipeline);
+
+        VkDescriptorSet descsets[] = { descset.get_handle(), };
+        vkCmdBindDescriptorSets(cmd_buffer.get_handle(), VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout.get_handle(), 0, 1, descsets, 0, nullptr);
+
+
+        auto viewport = vk_viewport(0, 0, framebuffer.get_width(), framebuffer.get_height());
+        cmd_buffer.set_parameter(viewport);
+
+
+
+
+        vkCmdDraw(cmd_buffer.get_handle(), 3, 1, 0, 0);
+        vkCmdEndRenderPass(cmd_buffer.get_handle());
+
+
+        cmd_buffer.end();
+
+
+        VkImageMemoryBarrier image_memory_barrier = {
+            VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, //type
+            nullptr, //next
+            0, //src access mask
+            VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, //dst access mask
+            VK_IMAGE_LAYOUT_UNDEFINED, //old image layout
+            VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, //new image layout
+            0, //src queue family index
+            0, //dst queue family index
+            framebuffer.get_image().get_handle(), //image
+            { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 }, //subresource range
+        };
+
+        vkCmdPipelineBarrier(cmd_buffer.get_handle(), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, 0, nullptr, 0,
+                            nullptr, 1, &image_memory_barrier);
+
+
+        VkPipelineStageFlags pipe_stage_flags = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+        VkCommandBuffer cmd_buf_raw = cmd_buffer.get_handle();
+        VkSubmitInfo submit_draw_info = {
+            VK_STRUCTURE_TYPE_SUBMIT_INFO, //type
+            nullptr, //next
+            0, //wait semaphore count
+            nullptr, //wait semaphores
+            &pipe_stage_flags, //wait dst stage mask
+            1, //command buffer count
+            &cmd_buf_raw, //command buffers
+            0, //signal semaphores count
+            nullptr, //signal semaphores
+        };
+        VkResult res = vkQueueSubmit(queue.get_handle(), 1, &submit_draw_info, VK_NULL_HANDLE);
+        if (res != VK_SUCCESS) {
+            throw vk_exception("Failed to submit queue: {}\n", res);
+        }
+
+        // == SWAP ==
+
+
+    //     vc->model.render(vc, &vc->buffers[index]);
+    //
+
+        VkSwapchainKHR swapchain_raw = swap_chain.get_handle();
+        VkPresentInfoKHR present_info = {
+            VK_STRUCTURE_TYPE_PRESENT_INFO_KHR, //type
+            nullptr, //next
+            0, //wait semaphores count
+            nullptr, //wait semaphores
+            1, //swapchain count
+            &swapchain_raw, //swapchains
+            &index, //image indices
+            &res, //results
+        };
+        vkQueuePresentKHR(queue.get_handle(), &present_info);
+        if (res != VK_SUCCESS) {
+            throw vk_exception("Failed to present queue: {}\n", res);
+        }
     };
 
-    print("pass {} fb {}\n",(void*)render_pass.get_handle(),(void*)framebuffer.get_handle());
+    draw();
 
-    vkCmdBeginRenderPass(cmd_buffer.get_handle(), &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
-
-    cmd_buffer.set_parameter(pipeline);
-
-    VkDescriptorSet descsets[] = { descset.get_handle(), };
-    vkCmdBindDescriptorSets(cmd_buffer.get_handle(), VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout.get_handle(), 0, 1, descsets, 0, nullptr);
-
-
-    auto viewport = vk_viewport(0, 0, framebuffer.get_width(), framebuffer.get_height());
-    cmd_buffer.set_parameter(viewport);
-
-
-
-
-    vkCmdDraw(cmd_buffer.get_handle(), 3, 1, 0, 0);
-    vkCmdEndRenderPass(cmd_buffer.get_handle());
-
-
-    cmd_buffer.end();
-
-
-    VkPipelineStageFlags pipe_stage_flags = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
-    VkCommandBuffer cmd_buf_raw = cmd_buffer.get_handle();
-    VkSubmitInfo submit_draw_info = {
-        VK_STRUCTURE_TYPE_SUBMIT_INFO, //type
-        nullptr, //next
-        0, //wait semaphore count
-        nullptr, //wait semaphores
-        &pipe_stage_flags, //wait dst stage mask
-        1, //command buffer count
-        &cmd_buf_raw, //command buffers
-        0, //signal semaphores count
-        nullptr, //signal semaphores
-    };
-    res = vkQueueSubmit(queue.get_handle(), 1, &submit_draw_info, VK_NULL_HANDLE);
-    if (res != VK_SUCCESS) {
-        throw vk_exception("Failed to submit queue: {}\n", res);
-    }
-
-    // == SWAP ==
-
-
-//     vc->model.render(vc, &vc->buffers[index]);
-//
-
-    VkSwapchainKHR swapchain_raw = swap_chain.get_handle();
-    VkPresentInfoKHR present_info = {
-        VK_STRUCTURE_TYPE_PRESENT_INFO_KHR, //type
-        nullptr, //next
-        0, //wait semaphores count
-        nullptr, //wait semaphores
-        1, //swapchain count
-        &swapchain_raw, //swapchains
-        &index, //image indices
-        &res, //results
-    };
-    vkQueuePresentKHR(queue.get_handle(), &present_info);
-    if (res != VK_SUCCESS) {
-        throw vk_exception("Failed to present queue: {}\n", res);
-    }
-
-sleep(10);
+    dpy.run([&]() {
+        print("loop\n");
+        draw();
+//         sleep(1);
+//         vkDeviceWaitIdle(device.get_handle());
+    });
     return 0;
 }

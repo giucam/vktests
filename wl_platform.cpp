@@ -76,6 +76,14 @@ public:
         return wl_platform_window(this, w, h);
     }
 
+    void run(const display::update_callback &update)
+    {
+        while (true) {
+            update();
+            wl_display_dispatch(m_display);
+        }
+    }
+
     void global(wl_registry *reg, uint32_t id, const char *interface, uint32_t version)
     {
         #define registry_bind(reg, type, ver) \

@@ -89,6 +89,8 @@ private:
 class display
 {
 public:
+    using update_callback = std::function<void ()>;
+
     class platform_display
     {
     public:
@@ -103,6 +105,7 @@ public:
             virtual ~dpy_interface() = default;
             virtual vk_instance create_vk_instance(const std::vector<std::string> &extensions) = 0;
             virtual platform_window create_window(int width, int height) = 0;
+            virtual void run(const display::update_callback &update) = 0;
         };
 
         template<class T>
@@ -117,6 +120,10 @@ public:
             platform_window create_window(int width, int height) override
             {
                 return data.create_window(width, height);
+            }
+            void run(const display::update_callback &update)
+            {
+                return data.run(update);
             }
 
             T data;
@@ -133,6 +140,8 @@ public:
 
     vk_instance create_vk_instance(const std::vector<std::string> &extensions);
     window create_window(int width, int height);
+
+    void run(const update_callback &update);
 
     static void register_platform(platform p, const platform_display_factory &factory);
 

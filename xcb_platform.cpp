@@ -47,6 +47,13 @@ public:
         return xcb_platform_window(this, w, h);
     }
 
+    void run(const display::update_callback &update)
+    {
+        while (true) {
+            update();
+        }
+    }
+
 private:
     xcb_connection_t *m_connection;
 

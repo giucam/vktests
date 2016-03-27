@@ -36,7 +36,7 @@ vk_swapchain vk_swapchain_extension::create_swapchain(const vk_surface &surface,
         nullptr, //indices, //queue family indices
         VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR, //pre transform
         VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR, //composite alpha
-        VK_PRESENT_MODE_MAILBOX_KHR, //present mode
+        VK_PRESENT_MODE_FIFO_KHR, //present mode
         false, //clipped
         nullptr, //old swap chain
     };
