@@ -384,3 +384,16 @@ private:
     VkViewport m_handle;
     VkRect2D m_scissor;
 };
+
+class vk_fence
+{
+public:
+    explicit vk_fence(const vk_device &device);
+    ~vk_fence();
+
+    VkFence get_handle() const { return m_handle; }
+
+private:
+    VkFence m_handle;
+    const vk_device &m_device;
+};

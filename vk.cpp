@@ -670,6 +670,27 @@ void vk_viewport::set_in_command_buffer(const vk_command_buffer &cmd_buffer) con
 //--
 
 
+vk_fence::vk_fence(const vk_device &device)
+        : m_device(device)
+{
+    VkFenceCreateInfo fence_info = {
+        VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, nullptr, 0,
+    };
+    VkResult res = vkCreateFence(device.get_handle(), &fence_info, nullptr, &m_handle);
+    if (res != VK_SUCCESS) {
+        throw vk_exception("Failed to create fence: {}\n", res);
+    }
+}
+
+vk_fence::~vk_fence()
+{
+    vkDestroyFence(m_device.get_handle(), m_handle, nullptr);
+}
+
+
+//--
+
+
 std::ostream &operator<<(std::ostream &os, VkResult v)
 {
 #define CASE(err) case err: os << #err; break;
