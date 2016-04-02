@@ -6,11 +6,10 @@ layout (location = 1) in vec4 color;
 layout (location = 0) out vec4 fragColor;
 
 layout(std140, binding = 0) uniform buf {
-    float angle;
+    mat4 matrix;
 } ubuf;
 
 void main() {
     fragColor = color;
-    mat2 rot = mat2(cos(ubuf.angle), -sin(ubuf.angle), sin(ubuf.angle), cos(ubuf.angle));
-    gl_Position = vec4(rot * pos.xy, pos.z, pos.w);
+    gl_Position = ubuf.matrix * pos;
 }

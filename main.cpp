@@ -8,6 +8,10 @@
 
 #include <vulkan/vulkan.h>
 
+#include <glm/mat4x4.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+
 #include "stringview.h"
 #include "display.h"
 #include "format.h"
@@ -73,7 +77,7 @@ int get_queue_family(vk_physical_device *dev, const vk_surface &surface)
 struct winhnd
 {
     struct uniform_data {
-        float angle;
+        float matrix[16];
     };
     struct vertex { float p[3]; float c[4]; };
 
@@ -100,6 +104,7 @@ struct winhnd
         , descset(descpool.allocate_descriptor_set(descset_layout))
         , pipeline_layout(device, descset_layout)
         , pipeline(device)
+        , m_angle(0)
     {
         VkResult res;
 
@@ -127,10 +132,6 @@ struct winhnd
 
         assert(uniform_buffer.get_required_memory_type() == buf.get_required_memory_type());
         uniform_buffer.bind_memory(&memory, buf.get_required_memory_size());
-        uniform_buffer.map([](void *ptr) {
-            uniform_data *data = static_cast<uniform_data *>(ptr);
-            data->angle = 0;
-        });
 
 
 
@@ -227,9 +228,14 @@ struct winhnd
         fmt::print("frame time: {}\n", time_diff);
 //             assert(time_diff<30);
 
-        uniform_buffer.map([time_diff](void *ptr) {
+        m_angle += 0.5 * time_diff;
+        glm::mat4 matrix = glm::ortho<double>(-2, 2, -2, 2, 1, 0);
+        matrix = glm::rotate<float>(matrix, m_angle, glm::vec3(0,0,1));
+
+        uniform_buffer.map([&matrix](void *ptr) {
             uniform_data *data = static_cast<uniform_data *>(ptr);
-            data->angle += 0.5 * time_diff;
+
+            memcpy(data->matrix, glm::value_ptr(matrix), sizeof(uniform_data::matrix));
         });
 
         uint32_t index = swapchain.acquire_next_image_index();
@@ -360,6 +366,7 @@ struct winhnd
     vk_pipeline_layout pipeline_layout;
     vk_graphics_pipeline pipeline;
     double m_time;
+    double m_angle;
 };
 
 
@@ -381,7 +388,7 @@ int main(int argc, char **argv)
 
     auto dpy = display(plat);
 
-    auto win = winhnd(dpy, 200, 200);
+    auto win = winhnd(dpy, 600, 600);
     win.show();
     win.win.update();
 
