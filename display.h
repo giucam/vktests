@@ -66,6 +66,7 @@ private:
         ~win_interface() = default;
         virtual void show() = 0;
         virtual vk_surface create_vk_surface(const vk_instance &instance, const window &win) = 0;
+        virtual void update() = 0;
     };
 
     template<class T>
@@ -77,6 +78,7 @@ private:
         {
             return data.create_vk_surface(instance, win);
         }
+        void update() override { data.update(); }
 
         T data;
     };
@@ -86,11 +88,67 @@ private:
     friend class display;
 };
 
+class window
+{
+public:
+    class handler
+    {
+    public:
+        template<class T>
+        handler(T &t)
+            : m_interface(std::make_unique<hnd<T>>(t))
+        {}
+
+        inline void update() { m_interface->update(); }
+        inline void mouse_motion(double x, double y) { m_interface->mouse_motion(x, y); }
+        inline void mouse_button(bool pressed) { m_interface->mouse_button(pressed); }
+
+    private:
+        struct hnd_interface
+        {
+            virtual ~hnd_interface() = default;
+            virtual void update() = 0;
+            virtual void mouse_motion(double x, double y) = 0;
+            virtual void mouse_button(bool pressed) = 0;
+        };
+        template<class T>
+        struct hnd : hnd_interface
+        {
+            hnd(T &t) : data(t) {}
+            void update() override { data.update(); }
+            void mouse_motion(double x, double y) override { data.mouse_motion(x, y); }
+            void mouse_button(bool pressed) override { data.mouse_button(pressed); }
+
+            T &data;
+        };
+
+        std::unique_ptr<hnd_interface> m_interface;
+    };
+
+    window(const display &dpy, int width, int height, handler hnd);
+    window(platform_window win);
+    window(const window &) = delete;
+    window(window &&w);
+
+    int get_width() const { return m_width; }
+    int get_height() const { return m_height; }
+
+    void show();
+    vk_surface create_vk_surface(const vk_instance &instance);
+
+    void update();
+
+private:
+    platform_window m_platform_window;
+    int m_width;
+    int m_height;
+
+    friend class display;
+};
+
 class display
 {
 public:
-    using update_callback = std::function<void ()>;
-
     class platform_display
     {
     public:
@@ -103,9 +161,11 @@ public:
         struct dpy_interface
         {
             virtual ~dpy_interface() = default;
+            virtual void init() = 0;
             virtual vk_instance create_vk_instance(const std::vector<std::string> &extensions) = 0;
-            virtual platform_window create_window(int width, int height) = 0;
-            virtual void run(const display::update_callback &update) = 0;
+            virtual platform_window create_window(int width, int height, window::handler hnd) = 0;
+            virtual void run() = 0;
+            virtual void quit() = 0;
         };
 
         template<class T>
@@ -113,24 +173,24 @@ public:
         {
             dpy(T t) : data(std::move(t)) {}
 
+            void init() override { data.init(); }
             vk_instance create_vk_instance(const std::vector<std::string> &extensions) override
             {
                 return data.create_vk_instance(extensions);
             }
-            platform_window create_window(int width, int height) override
+            platform_window create_window(int width, int height, window::handler hnd) override
             {
-                return data.create_window(width, height);
+                return data.create_window(width, height, std::move(hnd));
             }
-            void run(const display::update_callback &update)
-            {
-                return data.run(update);
-            }
+            void run() override { return data.run(); }
+            void quit() override { return data.quit(); }
 
             T data;
         };
 
         std::unique_ptr<dpy_interface> m_interface;
 
+        friend class window;
         friend class display;
     };
 
@@ -139,9 +199,9 @@ public:
     display(platform p);
 
     vk_instance create_vk_instance(const std::vector<std::string> &extensions);
-    window create_window(int width, int height);
 
-    void run(const update_callback &update);
+    void run();
+    void quit();
 
     static void register_platform(platform p, const platform_display_factory &factory);
 
@@ -157,25 +217,3 @@ private:
     static void register_platform() { \
         display::register_platform(platform, []() -> type { return type(); }); \
     }
-
-class window
-{
-public:
-    window(platform_window win);
-    window(const window &) = delete;
-    window(window &&w);
-
-    int get_width() const { return m_width; }
-    int get_height() const { return m_height; }
-
-    void show();
-    vk_surface create_vk_surface(const vk_instance &instance);
-
-private:
-    platform_window m_platform_window;
-    int m_width;
-    int m_height;
-
-    friend class display;
-};
-

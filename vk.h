@@ -8,6 +8,7 @@
 
 #include "format.h"
 #include "stringview.h"
+#include "utils.h"
 
 class window;
 class vk_device;
@@ -277,6 +278,8 @@ public:
         lazily_allocated = VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT,
     };
     vk_device_memory(const vk_device &device, property props, uint64_t size, uint32_t type_bits);
+    vk_device_memory(const vk_device_memory &) = delete;
+    vk_device_memory(vk_device_memory &&mem);
     ~vk_device_memory();
 
     void *map(uint64_t offset);
@@ -292,9 +295,6 @@ private:
     uint64_t m_size;
     property m_props;
 };
-
-#define FLAGS(flags) \
-inline int operator&(flags a, flags b) { return (int)a & (int)b; }
 
 FLAGS(vk_device_memory::property)
 
@@ -314,6 +314,8 @@ public:
     };
 
     vk_buffer(const vk_device &device, usage u, uint64_t size, uint32_t stride);
+    vk_buffer(const vk_buffer &) = delete;
+    vk_buffer(vk_buffer &&buffer);
     ~vk_buffer();
 
     uint64_t get_required_memory_size() const { return m_mem_reqs.size; }

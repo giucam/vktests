@@ -463,6 +463,14 @@ vk_device_memory::vk_device_memory(const vk_device &device, property props, uint
     }
 }
 
+vk_device_memory::vk_device_memory(vk_device_memory &&mem)
+                : m_device(mem.m_device)
+                , m_handle(mem.m_handle)
+                , m_size(mem.m_size)
+                , m_props(std::move(mem.m_props))
+{
+}
+
 vk_device_memory::~vk_device_memory()
 {
     vkFreeMemory(m_device.get_handle(), m_handle, nullptr);
@@ -527,6 +535,16 @@ vk_buffer::vk_buffer(const vk_device &device, usage u, uint64_t size, uint32_t s
         throw vk_exception("Failed to create vulkan buffer: {}\n", res);
     }
     vkGetBufferMemoryRequirements(device.get_handle(), m_handle, &m_mem_reqs);
+}
+
+vk_buffer::vk_buffer(vk_buffer &&buf)
+         : m_device(buf.m_device)
+         , m_handle(buf.m_handle)
+         , m_mem_reqs(buf.m_mem_reqs)
+         , m_mem(buf.m_mem)
+         , m_mem_offset(buf.m_mem_offset)
+         , m_stride(buf.m_stride)
+{
 }
 
 vk_buffer::~vk_buffer()
