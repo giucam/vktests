@@ -150,8 +150,9 @@ struct winhnd : public vk_window
         , cmd_pool(get_device().create_command_pool())
         , cmd_buffer(cmd_pool.create_command_buffer())
         , uniform_buffer(get_device(), vk_buffer::usage::uniform_buffer, sizeof(uniform_data), 0)
-        , buf(get_device(), 3)
-        , memory(get_device(), vk_device_memory::property::host_visible, 1024, uniform_buffer.get_required_memory_type())
+        , buf(get_device(), 24)
+        , index_buffer(get_device(), vk_buffer::usage::index_buffer, 100, 0)
+        , memory(get_device(), vk_device_memory::property::host_visible, 2048, uniform_buffer.get_required_memory_type())
         , descset_layout(get_device(), { { 0, vk_descriptor::type::uniform_buffer, 1, vk_shader_module::stage::vertex } })
         , descpool(get_device(), { { vk_descriptor::type::uniform_buffer, 1 } })
         , descset(descpool.allocate_descriptor_set(descset_layout))
@@ -170,15 +171,27 @@ struct winhnd : public vk_window
         buf.map([](void *data) {
             static const vertex vertices[] = {
                 { { -1.0f, -1.0f,  0.f, }, { 1, 0, 0, 1, }, },
-                { {  0.0f,  1.0f,  0.f,  }, { 0, 1, 0, 0, }, },
-                { {  1.0f, -1.0f,  0.f, }, { 0, 0, 1, 1, }, },
+                { { -1.0f,  1.0f,  0.f, }, { 0, 1, 0, 1, }, },
+                { {  1.0f,  1.0f,  0.f, }, { 0, 0, 1, 1, }, },
+                { {  1.0f, -1.0f,  0.f, }, { 0, 0, 0, 0, }, },
             };
 
             memcpy(data, vertices, sizeof(vertices));
         });
 
+        index_buffer.bind_memory(&memory, buf.get_required_memory_size());
+        index_buffer.map([](void *data) {
+            static const uint32_t indices[] = {
+                0, 1, 2,
+                0, 2, 3,
+            };
+            memcpy(data, indices, sizeof(indices));
+        });
+
+
         assert(uniform_buffer.get_required_memory_type() == buf.get_required_memory_type());
-        uniform_buffer.bind_memory(&memory, buf.get_required_memory_size());
+        assert(uniform_buffer.get_required_memory_type() == index_buffer.get_required_memory_type());
+        uniform_buffer.bind_memory(&memory, buf.get_required_memory_size() + index_buffer.get_required_memory_size());
 
         auto fence = vk_fence(get_device());
 
@@ -274,6 +287,7 @@ struct winhnd : public vk_window
         vkCmdBeginRenderPass(cmd_buffer.get_handle(), &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
         cmd_buffer.set_parameter(pipeline);
+        vkCmdBindIndexBuffer(cmd_buffer.get_handle(), index_buffer.get_handle(), 0, VK_INDEX_TYPE_UINT32);
 
         VkDescriptorSet descsets[] = { descset.get_handle(), };
         vkCmdBindDescriptorSets(cmd_buffer.get_handle(), VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout.get_handle(), 0, 1, descsets, 0, nullptr);
@@ -281,7 +295,7 @@ struct winhnd : public vk_window
         auto viewport = vk_viewport(0, 0, framebuffer.get_width(), framebuffer.get_height());
         cmd_buffer.set_parameter(viewport);
 
-        vkCmdDraw(cmd_buffer.get_handle(), 3, 1, 0, 0);
+        vkCmdDrawIndexed(cmd_buffer.get_handle(), 6, 1, 0, 0, 0);
         vkCmdEndRenderPass(cmd_buffer.get_handle());
 
         cmd_buffer.end();
@@ -343,6 +357,7 @@ struct winhnd : public vk_window
     vk_command_buffer cmd_buffer;
     vk_buffer uniform_buffer;
     vk_vertex_buffer<vertex> buf;
+    vk_buffer index_buffer;
     vk_device_memory memory;
     vk_descriptor_set_layout descset_layout;
     vk_descriptor_pool descpool;
