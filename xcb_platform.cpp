@@ -1,4 +1,6 @@
 
+#include <chrono>
+
 #define VK_USE_PLATFORM_XCB_KHR
 #include <vulkan/vk_platform.h>
 #include <vulkan/vulkan.h>
@@ -19,6 +21,7 @@ public:
     void show();
     vk_surface create_vk_surface(const vk_instance &instance, const window &win);
     void update();
+    void prepare_swap() {}
 
     void press_event(xcb_button_press_event_t *e);
     void release_event(xcb_button_release_event_t *e);
@@ -225,11 +228,14 @@ void xcb_platform_window::show()
 void xcb_platform_window::update()
 {
     if (!m_update) {
-       m_update = true;
-       m_display->m_event_loop.add_idle([this]() {
-           m_update = false;
-           m_winhnd.update();
-       });
+        m_update = true;
+        m_display->m_event_loop.add_idle([this]() {
+            m_update = false;
+
+            auto new_time = std::chrono::high_resolution_clock::now();
+            auto diff = std::chrono::duration_cast<std::chrono::microseconds>(new_time.time_since_epoch());
+            m_winhnd.update(diff.count() / 1.e6);
+        });
    }
 }
 

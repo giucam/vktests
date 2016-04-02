@@ -67,6 +67,7 @@ private:
         virtual void show() = 0;
         virtual vk_surface create_vk_surface(const vk_instance &instance, const window &win) = 0;
         virtual void update() = 0;
+        virtual void prepare_swap() = 0;
     };
 
     template<class T>
@@ -79,6 +80,7 @@ private:
             return data.create_vk_surface(instance, win);
         }
         void update() override { data.update(); }
+        void prepare_swap() override { data.prepare_swap(); }
 
         T data;
     };
@@ -99,7 +101,7 @@ public:
             : m_interface(std::make_unique<hnd<T>>(t))
         {}
 
-        inline void update() { m_interface->update(); }
+        inline void update(double seconds) { m_interface->update(seconds); }
         inline void mouse_motion(double x, double y) { m_interface->mouse_motion(x, y); }
         inline void mouse_button(bool pressed) { m_interface->mouse_button(pressed); }
 
@@ -107,7 +109,7 @@ public:
         struct hnd_interface
         {
             virtual ~hnd_interface() = default;
-            virtual void update() = 0;
+            virtual void update(double seconds) = 0;
             virtual void mouse_motion(double x, double y) = 0;
             virtual void mouse_button(bool pressed) = 0;
         };
@@ -115,7 +117,7 @@ public:
         struct hnd : hnd_interface
         {
             hnd(T &t) : data(t) {}
-            void update() override { data.update(); }
+            void update(double seconds) override { data.update(seconds); }
             void mouse_motion(double x, double y) override { data.mouse_motion(x, y); }
             void mouse_button(bool pressed) override { data.mouse_button(pressed); }
 
@@ -137,6 +139,7 @@ public:
     vk_surface create_vk_surface(const vk_instance &instance);
 
     void update();
+    void prepare_swap();
 
 private:
     platform_window m_platform_window;

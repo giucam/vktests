@@ -63,3 +63,8 @@ void window::update()
     m_platform_window.m_interface->update();
 }
 
+void window::prepare_swap()
+{
+    m_platform_window.m_interface->prepare_swap();
+}
+

@@ -93,17 +93,21 @@ public:
     void show();
     vk_surface create_vk_surface(const vk_instance &instance, const window &win);
     void update();
+    void prepare_swap();
 
     window::handler &get_handler() { return m_winhnd; }
 
     static wl_platform_window *from_surface(wl_surface *surf) { return static_cast<wl_platform_window *>(wl_surface_get_user_data(surf)); }
 
 private:
+    void send_update(wl_callback *, uint32_t time);
+
     window::handler m_winhnd;
     wl_platform_display *m_display;
     wl_surface *m_surface;
     wl_shell_surface *m_shell_surface;
     bool m_update;
+    wl_callback *m_frame_callback;
 };
 
 class wl_platform_display
@@ -223,6 +227,7 @@ wl_platform_window::wl_platform_window(wl_platform_display *dpy, int, int, windo
                 : m_winhnd(std::move(hnd))
                 , m_display(dpy)
                 , m_update(false)
+                , m_frame_callback(nullptr)
 {
     m_surface = wl_compositor_create_surface(dpy->m_compositor);
     wl_surface_add_listener(m_surface, nullptr, this);
@@ -235,8 +240,12 @@ wl_platform_window::wl_platform_window(wl_platform_window &&w)
                   , m_surface(w.m_surface)
                   , m_shell_surface(w.m_shell_surface)
                   , m_update(w.m_update)
+                  , m_frame_callback(w.m_frame_callback)
 {
     wl_surface_set_user_data(m_surface, this);
+    if (m_frame_callback) {
+        wl_callback_set_user_data(m_frame_callback, this);
+    }
 }
 
 void wl_platform_window::show()
@@ -265,12 +274,31 @@ vk_surface wl_platform_window::create_vk_surface(const vk_instance &instance, co
 void wl_platform_window::update()
 {
    if (!m_update) {
-       m_update = true;
-       m_display->schedule([this]() {
-           m_update = false;
-           m_winhnd.update();
-       });
+        m_update = true;
+        if (!m_frame_callback) {
+            m_display->schedule([this]() {
+                m_update = false;
+                m_winhnd.update(0);
+            });
+        }
    }
+}
+
+void wl_platform_window::prepare_swap()
+{
+    m_frame_callback = wl_surface_frame(m_surface);
+    static const wl_callback_listener listener = {
+        wrapInterface(&wl_platform_window::send_update),
+    };
+    wl_callback_add_listener(m_frame_callback, &listener, this);
+}
+
+void wl_platform_window::send_update(wl_callback *, uint32_t time)
+{
+    if (m_update) {
+        m_update = false;
+        m_winhnd.update((double)time / 1000.);
+    }
 }
 
 
