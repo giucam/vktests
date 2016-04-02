@@ -176,14 +176,14 @@ vk_device::~vk_device()
     vkDestroyDevice(m_handle, nullptr);
 }
 
-vk_queue vk_device::get_queue(uint32_t index)
+vk_queue vk_device::get_queue(uint32_t index) const
 {
     VkQueue queue;
     vkGetDeviceQueue(m_handle, m_queue_family_index, index, &queue);
     return vk_queue(queue, m_queue_family_index, index);
 }
 
-vk_command_pool vk_device::create_command_pool()
+vk_command_pool vk_device::create_command_pool() const
 {
     VkCommandPoolCreateInfo command_pool_info = {
         VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO, nullptr, 0,

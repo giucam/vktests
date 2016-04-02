@@ -73,47 +73,96 @@ int get_queue_family(vk_physical_device *dev, const vk_surface &surface)
     return family_queue_index;
 }
 
+class vk_window
+{
+public:
+    vk_window(display &dpy, const vk_instance &instance, int w, int h)
+        : m_window(dpy, w, h, *this)
+        , m_instance(instance)
+        , m_phys_device(instance.get_physical_devices()[0])
+        , m_surface(m_window.create_vk_surface(instance))
+        , m_format(get_format(m_surface, &m_phys_device))
+        , m_family_queue_index(get_queue_family(&m_phys_device, m_surface))
+        , m_device(m_phys_device.create_device<vk_swapchain_extension>(m_family_queue_index))
+        , m_swapchain_ext(m_device.get_extension_object<vk_swapchain_extension>())
+        , m_swapchain(m_swapchain_ext->create_swapchain(m_surface, m_format))
+        , m_renderpass(m_device, m_format.format)
+    {
+        print("using queue index {}\n", m_family_queue_index);
 
-struct winhnd
+        const auto &imgs = m_swapchain.get_images();
+        print("{} images available\n", imgs.size());
+
+        m_framebuffers.reserve(imgs.size());
+        for (const vk_image &img: imgs) {
+            print("creating buffer {}\n",(void*)&img);
+            m_framebuffers.emplace_back(get_device(), img, m_renderpass);
+        }
+    }
+
+    void show() { m_window.show(); }
+    void schedule_update() { m_window.update(); }
+
+    const vk_surface &get_surface() const { return m_surface; }
+    const vk_device &get_device() const { return m_device; }
+    const vk_renderpass &get_renderpass() const { return m_renderpass; }
+    const vk_framebuffer &acquire_next_framebuffer()
+    {
+        m_fb_index = m_swapchain.acquire_next_image_index();
+        return m_framebuffers[m_fb_index];
+    }
+
+    void present_current_framebuffer(const vk_queue &queue)
+    {
+        m_swapchain.present(queue, m_fb_index);
+    }
+
+    virtual void update(double /*time*/) {}
+    virtual void mouse_motion(double /*x*/, double /*y*/) {}
+    virtual void mouse_button(bool /*pressed*/) {}
+
+private:
+    window m_window;
+    const vk_instance &m_instance;
+    vk_physical_device m_phys_device;
+    vk_surface m_surface;
+    VkSurfaceFormatKHR m_format;
+    int m_family_queue_index;
+    vk_device m_device;
+    std::shared_ptr<vk_swapchain_extension> m_swapchain_ext;
+    vk_swapchain m_swapchain;
+    std::vector<vk_framebuffer> m_framebuffers;
+    vk_renderpass m_renderpass;
+    uint32_t m_fb_index;
+};
+
+struct winhnd : public vk_window
 {
     struct uniform_data {
         float matrix[16];
     };
     struct vertex { float p[3]; float c[4]; };
 
-    winhnd(display &dpy, int w, int h)
-        : win(dpy, w, h, *this)
+    winhnd(display &dpy, const vk_instance &instance, int w, int h)
+        : vk_window(dpy, instance, w, h)
         , m_display(dpy)
-        , vk(dpy.create_vk_instance({ VK_EXT_DEBUG_REPORT_EXTENSION_NAME }))
-        , phys_device(vk.get_physical_devices()[0])
-        , surface(win.create_vk_surface(vk))
-        , format(get_format(surface, &phys_device))
-        , family_queue_index(get_queue_family(&phys_device, surface))
-        , device(phys_device.create_device<vk_swapchain_extension>(family_queue_index))
-        , queue(device.get_queue(0))
-        , swapchain_ext(device.get_extension_object<vk_swapchain_extension>())
-        , swapchain(swapchain_ext->create_swapchain(surface, format))
-        , cmd_pool(device.create_command_pool())
+        , queue(get_device().get_queue(0))
+        , cmd_pool(get_device().create_command_pool())
         , cmd_buffer(cmd_pool.create_command_buffer())
-        , uniform_buffer(device, vk_buffer::usage::uniform_buffer, sizeof(uniform_data), 0)
-        , buf(device, 3)
-        , memory(device, vk_device_memory::property::host_visible, 1024, uniform_buffer.get_required_memory_type())
-        , render_pass(device, format.format)
-        , descset_layout(device, { { 0, vk_descriptor::type::uniform_buffer, 1, vk_shader_module::stage::vertex } })
-        , descpool(device, { { vk_descriptor::type::uniform_buffer, 1 } })
+        , uniform_buffer(get_device(), vk_buffer::usage::uniform_buffer, sizeof(uniform_data), 0)
+        , buf(get_device(), 3)
+        , memory(get_device(), vk_device_memory::property::host_visible, 1024, uniform_buffer.get_required_memory_type())
+        , descset_layout(get_device(), { { 0, vk_descriptor::type::uniform_buffer, 1, vk_shader_module::stage::vertex } })
+        , descpool(get_device(), { { vk_descriptor::type::uniform_buffer, 1 } })
         , descset(descpool.allocate_descriptor_set(descset_layout))
-        , pipeline_layout(device, descset_layout)
-        , pipeline(device)
+        , pipeline_layout(get_device(), descset_layout)
+        , pipeline(get_device())
+        , m_time(0)
         , m_angle(0)
     {
         VkResult res;
 
-        print("using queue index {}\n", family_queue_index);
-
-
-
         auto init_cmd_buf = cmd_pool.create_command_buffer();
-
         init_cmd_buf.begin();
 
         print("mem size {}\n",buf.get_required_memory_size());
@@ -128,19 +177,10 @@ struct winhnd
             memcpy(data, vertices, sizeof(vertices));
         });
 
-
-
         assert(uniform_buffer.get_required_memory_type() == buf.get_required_memory_type());
         uniform_buffer.bind_memory(&memory, buf.get_required_memory_size());
 
-
-
-
-
-
-
-
-        auto fence = vk_fence(device);
+        auto fence = vk_fence(get_device());
 
         struct {
             vk_descriptor::type type() const { return vk_descriptor::type::uniform_buffer; }
@@ -151,21 +191,7 @@ struct winhnd
         } update_info = { uniform_buffer };
         descset.update(update_info);
 
-
-
-        vkDeviceWaitIdle(device.get_handle());
-
-        const auto &imgs = swapchain.get_images();
-        print("{} images available\n", imgs.size());
-
-
-
-        buffers.reserve(imgs.size());
-        for (const vk_image &img: imgs) {
-            print("creating buffer {}\n",(void*)&img);
-            buffers.emplace_back(device, img, render_pass);
-        }
-
+        vkDeviceWaitIdle(get_device().get_handle());
 
         pipeline.add_stage(vk_shader_module::stage::vertex, "vert.spv", "main");
         pipeline.add_stage(vk_shader_module::stage::fragment, "frag.spv", "main");
@@ -177,23 +203,12 @@ struct winhnd
         pipeline.set_primitive_mode(vk_graphics_pipeline::triangle_list, false);
         pipeline.set_blending(true);
 
-        pipeline.create(render_pass, pipeline_layout);
-
-
-
-
-
-
-
-
-
-
-
+        pipeline.create(get_renderpass(), pipeline_layout);
 
 
         init_cmd_buf.end();
 
-        vkDeviceWaitIdle(device.get_handle());
+        vkDeviceWaitIdle(get_device().get_handle());
 
         const VkCommandBuffer cmd_bufs[] = { init_cmd_buf.get_handle() };
         VkSubmitInfo submit_info = {
@@ -217,7 +232,6 @@ struct winhnd
         if (res != VK_SUCCESS) {
             throw vk_exception("Failed to wait queue: {}\n", res);
         }
-
     }
 
     void update(double time)
@@ -238,10 +252,7 @@ struct winhnd
             memcpy(data->matrix, glm::value_ptr(matrix), sizeof(uniform_data::matrix));
         });
 
-        uint32_t index = swapchain.acquire_next_image_index();
-        const auto &framebuffer = buffers[index];
-
-//             print("draw on {}\n",index);
+        const auto &framebuffer = acquire_next_framebuffer();
 
         cmd_buffer.begin();
 
@@ -253,7 +264,7 @@ struct winhnd
         VkRenderPassBeginInfo render_pass_begin_info = {
             VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, //type
             nullptr, //next
-            render_pass.get_handle(), //render pass
+            get_renderpass().get_handle(), //render pass
             framebuffer.get_handle(), //framebuffer
             { { 0, 0 }, { framebuffer.get_width(), framebuffer.get_height() } }, //render area
             1, //clear value count
@@ -267,16 +278,11 @@ struct winhnd
         VkDescriptorSet descsets[] = { descset.get_handle(), };
         vkCmdBindDescriptorSets(cmd_buffer.get_handle(), VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout.get_handle(), 0, 1, descsets, 0, nullptr);
 
-
         auto viewport = vk_viewport(0, 0, framebuffer.get_width(), framebuffer.get_height());
         cmd_buffer.set_parameter(viewport);
 
-
-
-
         vkCmdDraw(cmd_buffer.get_handle(), 3, 1, 0, 0);
         vkCmdEndRenderPass(cmd_buffer.get_handle());
-
 
         cmd_buffer.end();
 
@@ -316,14 +322,8 @@ struct winhnd
             throw vk_exception("Failed to submit queue: {}\n", res);
         }
 
-        // == SWAP ==
-
-
-    //     vc->model.render(vc, &vc->buffers[index]);
-    //
-        swapchain.present(queue, index);
-
-        win.update();
+        present_current_framebuffer(queue);
+        schedule_update();
     }
 
     void mouse_motion(double x, double y)
@@ -337,29 +337,13 @@ struct winhnd
         m_display.quit();
     }
 
-    void show()
-    {
-        win.show();
-    }
-
-    window win;
     display &m_display;
-    vk_instance vk;
-    vk_physical_device phys_device;
-    vk_surface surface;
-    VkSurfaceFormatKHR format;
-    int family_queue_index;
-    vk_device device;
     vk_queue queue;
-    std::shared_ptr<vk_swapchain_extension> swapchain_ext;
-    vk_swapchain swapchain;
     vk_command_pool cmd_pool;
     vk_command_buffer cmd_buffer;
     vk_buffer uniform_buffer;
     vk_vertex_buffer<vertex> buf;
     vk_device_memory memory;
-    std::vector<vk_framebuffer> buffers;
-    vk_renderpass render_pass;
     vk_descriptor_set_layout descset_layout;
     vk_descriptor_pool descpool;
     vk_descriptor_set descset;
@@ -388,9 +372,10 @@ int main(int argc, char **argv)
 
     auto dpy = display(plat);
 
-    auto win = winhnd(dpy, 600, 600);
+    auto instance = dpy.create_vk_instance({ VK_EXT_DEBUG_REPORT_EXTENSION_NAME });
+    auto win = winhnd(dpy, instance, 600, 600);
     win.show();
-    win.win.update();
+    win.schedule_update();
 
 
     dpy.run();

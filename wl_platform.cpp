@@ -295,6 +295,8 @@ void wl_platform_window::prepare_swap()
 
 void wl_platform_window::send_update(wl_callback *, uint32_t time)
 {
+    wl_callback_destroy(m_frame_callback);
+    m_frame_callback = nullptr;
     if (m_update) {
         m_update = false;
         m_winhnd.update((double)time / 1000.);

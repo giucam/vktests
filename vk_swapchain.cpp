@@ -93,7 +93,6 @@ void vk_swapchain::present(const vk_queue &queue, uint32_t image_index)
 {
     m_surface.m_window.prepare_swap();
 
-    VkResult res;
     VkPresentInfoKHR present_info = {
         VK_STRUCTURE_TYPE_PRESENT_INFO_KHR, //type
         nullptr, //next
@@ -102,9 +101,9 @@ void vk_swapchain::present(const vk_queue &queue, uint32_t image_index)
         1, //swapchain count
         &m_handle, //swapchains
         &image_index, //image indices
-        &res, //results
+        nullptr, //results
     };
-    vkQueuePresentKHR(queue.get_handle(), &present_info);
+    VkResult res = vkQueuePresentKHR(queue.get_handle(), &present_info);
     if (res != VK_SUCCESS) {
         throw vk_exception("Failed to present queue: {}\n", res);
     }

@@ -96,11 +96,11 @@ public:
     vk_device(vk_device &&);
     ~vk_device();
 
-    vk_queue get_queue(uint32_t index);
-    vk_command_pool create_command_pool();
+    vk_queue get_queue(uint32_t index) const;
+    vk_command_pool create_command_pool() const;
 
     template<class T>
-    std::shared_ptr<T> get_extension_object() {
+    std::shared_ptr<T> get_extension_object() const {
         if (!is_extension_enabled(T::get_extension())) {
             throw vk_exception("Cannot create the requested extension object. Extension '{}' not activated.\n", T::get_extension());
         }
