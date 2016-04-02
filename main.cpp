@@ -8,6 +8,8 @@
 
 #include <vulkan/vulkan.h>
 
+#define GLM_FORCE_RADIANS
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/mat4x4.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -150,8 +152,8 @@ struct winhnd : public vk_window
         , cmd_pool(get_device().create_command_pool())
         , cmd_buffer(cmd_pool.create_command_buffer())
         , uniform_buffer(get_device(), vk_buffer::usage::uniform_buffer, sizeof(uniform_data), 0)
-        , buf(get_device(), 24)
-        , index_buffer(get_device(), vk_buffer::usage::index_buffer, 100, 0)
+        , buf(get_device(), 8)
+        , index_buffer(get_device(), vk_buffer::usage::index_buffer, 200, 0)
         , memory(get_device(), vk_device_memory::property::host_visible, 2048, uniform_buffer.get_required_memory_type())
         , descset_layout(get_device(), { { 0, vk_descriptor::type::uniform_buffer, 1, vk_shader_module::stage::vertex } })
         , descpool(get_device(), { { vk_descriptor::type::uniform_buffer, 1 } })
@@ -170,10 +172,15 @@ struct winhnd : public vk_window
         buf.bind_memory(&memory, 0);
         buf.map([](void *data) {
             static const vertex vertices[] = {
-                { { -1.0f, -1.0f,  0.f, }, { 1, 0, 0, 1, }, },
-                { { -1.0f,  1.0f,  0.f, }, { 0, 1, 0, 1, }, },
-                { {  1.0f,  1.0f,  0.f, }, { 0, 0, 1, 1, }, },
-                { {  1.0f, -1.0f,  0.f, }, { 0, 0, 0, 0, }, },
+                { { -1.0f, -1.0f, -1.f, }, { 1, 0, 0, 1, }, },
+                { { -1.0f,  1.0f, -1.f, }, { 0, 1, 0, 1, }, },
+                { {  1.0f,  1.0f, -1.f, }, { 0, 0, 1, 1, }, },
+                { {  1.0f, -1.0f, -1.f, }, { 0, 0, 0, 0, }, },
+
+                { { -1.0f, -1.0f,  1.0f, }, { 1, 0, 0, 1, }, },
+                { { -1.0f,  1.0f,  1.0f, }, { 0, 1, 0, 1, }, },
+                { {  1.0f,  1.0f,  1.0f, }, { 0, 0, 1, 1, }, },
+                { {  1.0f, -1.0f,  1.0f, }, { 0, 0, 0, 0, }, },
             };
 
             memcpy(data, vertices, sizeof(vertices));
@@ -182,8 +189,29 @@ struct winhnd : public vk_window
         index_buffer.bind_memory(&memory, buf.get_required_memory_size());
         index_buffer.map([](void *data) {
             static const uint32_t indices[] = {
+                //front
                 0, 1, 2,
                 0, 2, 3,
+
+                //right
+                3, 2, 6,
+                3, 6, 7,
+
+                //top
+                4, 0, 3,
+                4, 3, 7,
+
+                //left
+                4, 5, 0,
+                0, 5, 1,
+
+                //bottom
+                1, 5, 6,
+                1, 6, 2,
+
+                //back
+                7, 6, 5,
+                7, 5, 4,
             };
             memcpy(data, indices, sizeof(indices));
         });
@@ -256,8 +284,9 @@ struct winhnd : public vk_window
 //             assert(time_diff<30);
 
         m_angle += 0.5 * time_diff;
-        glm::mat4 matrix = glm::ortho<double>(-2, 2, -2, 2, 1, 0);
-        matrix = glm::rotate<float>(matrix, m_angle, glm::vec3(0,0,1));
+        glm::mat4 matrix = glm::perspectiveLH<double>(1, 1, 0.01, 1000);
+        matrix = glm::translate<float>(matrix, glm::vec3(0, 0, 3));
+        matrix = glm::rotate<float>(matrix, m_angle, glm::vec3(1, 1, 1));
 
         uniform_buffer.map([&matrix](void *ptr) {
             uniform_data *data = static_cast<uniform_data *>(ptr);
@@ -295,7 +324,7 @@ struct winhnd : public vk_window
         auto viewport = vk_viewport(0, 0, framebuffer.get_width(), framebuffer.get_height());
         cmd_buffer.set_parameter(viewport);
 
-        vkCmdDrawIndexed(cmd_buffer.get_handle(), 6, 1, 0, 0, 0);
+        vkCmdDrawIndexed(cmd_buffer.get_handle(), 36, 1, 0, 0, 0);
         vkCmdEndRenderPass(cmd_buffer.get_handle());
 
         cmd_buffer.end();
