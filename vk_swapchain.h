@@ -38,8 +38,11 @@ public:
 
     VkSwapchainKHR get_handle() const { return m_handle; }
 
+    void present(const vk_queue &queue, uint32_t image_index);
+
 private:
     const vk_device &m_device;
     VkSwapchainKHR m_handle;
     std::vector<vk_image> m_images;
+    const vk_surface &m_surface;
 };

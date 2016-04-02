@@ -313,7 +313,7 @@ vk_layer::vk_layer(const VkLayerProperties &props)
 //--
 
 
-vk_surface::vk_surface(const vk_instance &instance, const window &window, VkSurfaceKHR surface)
+vk_surface::vk_surface(const vk_instance &instance, window &window, VkSurfaceKHR surface)
           : m_instance(instance)
           , m_window(window)
           , m_handle(surface)

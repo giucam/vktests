@@ -19,7 +19,7 @@ public:
     xcb_platform_window(xcb_platform_window &&);
 
     void show();
-    vk_surface create_vk_surface(const vk_instance &instance, const window &win);
+    vk_surface create_vk_surface(const vk_instance &instance, window &win);
     void update();
     void prepare_swap() {}
 
@@ -239,7 +239,7 @@ void xcb_platform_window::update()
    }
 }
 
-vk_surface xcb_platform_window::create_vk_surface(const vk_instance &instance, const window &window)
+vk_surface xcb_platform_window::create_vk_surface(const vk_instance &instance, window &window)
 {
     VkSurfaceKHR surface = 0;
     VkXcbSurfaceCreateInfoKHR info = {

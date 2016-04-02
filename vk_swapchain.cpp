@@ -55,6 +55,7 @@ vk_swapchain vk_swapchain_extension::create_swapchain(const vk_surface &surface,
 vk_swapchain::vk_swapchain(const vk_device &device, VkSwapchainKHR handle, const vk_surface &surface)
             : m_device(device)
             , m_handle(handle)
+            , m_surface(surface)
 {
     uint32_t image_count = 0;
     vkGetSwapchainImagesKHR(device.get_handle(), m_handle, &image_count, nullptr);
@@ -86,4 +87,25 @@ uint32_t vk_swapchain::acquire_next_image_index()
         throw vk_exception("Failed to aquire swap chain image: {}\n", res);
     }
     return index;
+}
+
+void vk_swapchain::present(const vk_queue &queue, uint32_t image_index)
+{
+    m_surface.m_window.prepare_swap();
+
+    VkResult res;
+    VkPresentInfoKHR present_info = {
+        VK_STRUCTURE_TYPE_PRESENT_INFO_KHR, //type
+        nullptr, //next
+        0, //wait semaphores count
+        nullptr, //wait semaphores
+        1, //swapchain count
+        &m_handle, //swapchains
+        &image_index, //image indices
+        &res, //results
+    };
+    vkQueuePresentKHR(queue.get_handle(), &present_info);
+    if (res != VK_SUCCESS) {
+        throw vk_exception("Failed to present queue: {}\n", res);
+    }
 }

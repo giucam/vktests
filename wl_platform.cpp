@@ -91,7 +91,7 @@ public:
     wl_platform_window(wl_platform_window &&w);
 
     void show();
-    vk_surface create_vk_surface(const vk_instance &instance, const window &win);
+    vk_surface create_vk_surface(const vk_instance &instance, window &win);
     void update();
     void prepare_swap();
 
@@ -254,7 +254,7 @@ void wl_platform_window::show()
     wl_shell_surface_set_toplevel(m_shell_surface);
 }
 
-vk_surface wl_platform_window::create_vk_surface(const vk_instance &instance, const window &win)
+vk_surface wl_platform_window::create_vk_surface(const vk_instance &instance, window &win)
 {
     VkSurfaceKHR surface = 0;
     VkWaylandSurfaceCreateInfoKHR info = {

@@ -65,7 +65,7 @@ private:
     {
         ~win_interface() = default;
         virtual void show() = 0;
-        virtual vk_surface create_vk_surface(const vk_instance &instance, const window &win) = 0;
+        virtual vk_surface create_vk_surface(const vk_instance &instance, window &win) = 0;
         virtual void update() = 0;
         virtual void prepare_swap() = 0;
     };
@@ -75,7 +75,7 @@ private:
     {
         win(T t) : data(std::move(t)) {}
         void show() override { data.show(); }
-        vk_surface create_vk_surface(const vk_instance &instance, const window &win) override
+        vk_surface create_vk_surface(const vk_instance &instance, window &win) override
         {
             return data.create_vk_surface(instance, win);
         }

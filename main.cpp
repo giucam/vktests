@@ -230,9 +230,6 @@ struct winhnd
         uniform_buffer.map([time_diff](void *ptr) {
             uniform_data *data = static_cast<uniform_data *>(ptr);
             data->angle += 0.5 * time_diff;
-            while (data->angle >= 2 * 3.1415)
-                data->angle -= 2 * 3.1415;
-            fmt::print("angle {}\n",data->angle);
         });
 
         uint32_t index = swapchain.acquire_next_image_index();
@@ -318,23 +315,7 @@ struct winhnd
 
     //     vc->model.render(vc, &vc->buffers[index]);
     //
-        win.prepare_swap();
-
-        VkSwapchainKHR swapchain_raw = swapchain.get_handle();
-        VkPresentInfoKHR present_info = {
-            VK_STRUCTURE_TYPE_PRESENT_INFO_KHR, //type
-            nullptr, //next
-            0, //wait semaphores count
-            nullptr, //wait semaphores
-            1, //swapchain count
-            &swapchain_raw, //swapchains
-            &index, //image indices
-            &res, //results
-        };
-        vkQueuePresentKHR(queue.get_handle(), &present_info);
-        if (res != VK_SUCCESS) {
-            throw vk_exception("Failed to present queue: {}\n", res);
-        }
+        swapchain.present(queue, index);
 
         win.update();
     }

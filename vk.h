@@ -212,7 +212,7 @@ private:
 class vk_surface
 {
 public:
-    vk_surface(const vk_instance &instance, const window &window, VkSurfaceKHR surface);
+    vk_surface(const vk_instance &instance, window &window, VkSurfaceKHR surface);
     vk_surface(const vk_surface &) = delete;
     vk_surface(vk_surface &&s);
     ~vk_surface();
@@ -225,8 +225,10 @@ public:
 
 private:
     const vk_instance &m_instance;
-    const window &m_window;
+    window &m_window;
     VkSurfaceKHR m_handle;
+
+    friend class vk_swapchain;
 };
 
 class vk_image_view
