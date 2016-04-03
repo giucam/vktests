@@ -23,8 +23,10 @@ public:
     void update();
     void prepare_swap() {}
 
-    void press_event(xcb_button_press_event_t *e);
-    void release_event(xcb_button_release_event_t *e);
+    void mouse_press_event(xcb_button_press_event_t *e);
+    void mouse_release_event(xcb_button_release_event_t *e);
+    void key_press_event(xcb_key_press_event_t *e);
+    void key_release_event(xcb_key_release_event_t *e);
 
 private:
     xcb_platform_display *m_display;
@@ -79,12 +81,22 @@ public:
             switch (event->response_type & ~0x80) {
             case XCB_BUTTON_PRESS: {
                 xcb_button_press_event_t *press = (xcb_button_press_event_t *)event;
-                window(press->event)->press_event(press);
+                window(press->event)->mouse_press_event(press);
                 break;
             }
             case XCB_BUTTON_RELEASE: {
                 xcb_button_release_event_t *release = (xcb_button_release_event_t *)event;
-                window(release->event)->release_event(release);
+                window(release->event)->mouse_release_event(release);
+                break;
+            }
+            case XCB_KEY_PRESS: {
+                xcb_key_press_event_t *press = (xcb_key_press_event_t *)event;
+                window(press->event)->key_press_event(press);
+                break;
+            }
+            case XCB_KEY_RELEASE: {
+                xcb_key_release_event_t *release = (xcb_key_release_event_t *)event;
+                window(release->event)->key_release_event(release);
                 break;
             }
             default:
@@ -167,7 +179,7 @@ xcb_platform_window::xcb_platform_window(xcb_platform_display *dpy, int width, i
    uint32_t window_values[] = {
       XCB_EVENT_MASK_EXPOSURE |
       XCB_EVENT_MASK_STRUCTURE_NOTIFY |
-      XCB_EVENT_MASK_KEY_PRESS |
+      XCB_EVENT_MASK_KEY_PRESS | XCB_EVENT_MASK_KEY_RELEASE |
       XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE
    };
 
@@ -254,12 +266,22 @@ vk_surface xcb_platform_window::create_vk_surface(const vk_instance &instance, w
     return vk_surface(instance, window, surface);
 }
 
-void xcb_platform_window::press_event(xcb_button_press_event_t *e)
+void xcb_platform_window::mouse_press_event(xcb_button_press_event_t *e)
 {
    m_winhnd.mouse_button(true);
 }
 
-void xcb_platform_window::release_event(xcb_button_release_event_t *e)
+void xcb_platform_window::mouse_release_event(xcb_button_release_event_t *e)
 {
    m_winhnd.mouse_button(false);
+}
+
+void xcb_platform_window::key_press_event(xcb_key_press_event_t *e)
+{
+    m_winhnd.key(e->detail - 8, true);
+}
+
+void xcb_platform_window::key_release_event(xcb_key_press_event_t *e)
+{
+    m_winhnd.key(e->detail - 8, false);
 }

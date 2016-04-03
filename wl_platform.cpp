@@ -57,6 +57,34 @@ private:
     wl_platform_window *m_window;
 };
 
+class keyboard
+{
+public:
+    explicit keyboard(wl_keyboard *k)
+        : m_keyboard(k)
+        , m_window(nullptr)
+    {
+        static const wl_keyboard_listener listener = {
+            wrapInterface(&keyboard::keymap),
+            wrapInterface(&keyboard::enter),
+            wrapInterface(&keyboard::leave),
+            wrapInterface(&keyboard::key),
+            wrapInterface(&keyboard::modifiers),
+        };
+        wl_keyboard_add_listener(k, &listener, this);
+    }
+
+    void keymap(wl_keyboard *, uint32_t format, int fd, uint32_t size);
+    void enter(wl_keyboard *, uint32_t serial, wl_surface *surface, wl_array *keys);
+    void leave(wl_keyboard *, uint32_t serial, wl_surface *surface);
+    void key(wl_keyboard *, uint32_t serial, uint32_t time, uint32_t key, uint32_t state);
+    void modifiers(wl_keyboard *, uint32_t serial, uint32_t mods_depressed, uint32_t mods_latched, uint32_t mods_locked, uint32_t group);
+
+private:
+    wl_keyboard *m_keyboard;
+    wl_platform_window *m_window;
+};
+
 class seat
 {
 public:
@@ -71,8 +99,11 @@ public:
 
     void capabilities(wl_seat *, uint32_t caps)
     {
-        if (!m_pointer & caps & WL_SEAT_CAPABILITY_POINTER) {
+        if (!m_pointer && caps & WL_SEAT_CAPABILITY_POINTER) {
             m_pointer = std::make_unique<pointer>(wl_seat_get_pointer(m_seat));
+        }
+        if (!m_keyboard && caps & WL_SEAT_CAPABILITY_KEYBOARD) {
+            m_keyboard = std::make_unique<keyboard>(wl_seat_get_keyboard(m_seat));
         }
     }
 
@@ -81,6 +112,7 @@ public:
 private:
     wl_seat *m_seat;
     std::unique_ptr<pointer> m_pointer;
+    std::unique_ptr<keyboard> m_keyboard;
 };
 
 class wl_platform_window
@@ -328,5 +360,30 @@ void pointer::button(wl_pointer *, uint32_t serial, uint32_t time, uint32_t butt
 }
 
 void pointer::axis(wl_pointer *, uint32_t time, uint32_t axis, wl_fixed_t value)
+{
+}
+
+
+
+void keyboard::keymap(wl_keyboard *, uint32_t format, int fd, uint32_t size)
+{
+}
+
+void keyboard::enter(wl_keyboard *, uint32_t serial, wl_surface *surface, wl_array *keys)
+{
+    m_window = wl_platform_window::from_surface(surface);
+}
+
+void keyboard::leave(wl_keyboard *, uint32_t serial, wl_surface *surface)
+{
+    m_window = nullptr;
+}
+
+void keyboard::key(wl_keyboard *, uint32_t serial, uint32_t time, uint32_t key, uint32_t state)
+{
+    m_window->get_handler().key(key, state == WL_KEYBOARD_KEY_STATE_PRESSED);
+}
+
+void keyboard::modifiers(wl_keyboard *, uint32_t serial, uint32_t mods_depressed, uint32_t mods_latched, uint32_t mods_locked, uint32_t group)
 {
 }

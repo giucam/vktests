@@ -129,6 +129,7 @@ public:
     virtual void update(double /*time*/) {}
     virtual void mouse_motion(double /*x*/, double /*y*/) {}
     virtual void mouse_button(bool /*pressed*/) {}
+    virtual void key(uint32_t /*key*/, bool /*pressed*/) {}
 
 private:
     window m_window;
@@ -174,6 +175,8 @@ struct winhnd : public vk_window
         , pipeline(get_device())
         , m_time(0)
         , m_angle(0)
+        , m_animate(true)
+        , m_debug(false)
     {
         VkResult res;
 
@@ -292,10 +295,12 @@ struct winhnd : public vk_window
         double time_diff = m_time < 1 ? 0 : time - m_time;
         m_time = time;
 
-        fmt::print("frame time: {}\n", time_diff);
+        if (m_debug) {
+            fmt::print("frame time: {}\n", time_diff);
+        }
 //             assert(time_diff<30);
 
-        m_angle += 0.5 * time_diff;
+        m_angle += 0.5 * time_diff * m_animate;
         glm::mat4 matrix = glm::perspective<double>(1, 1, 0.1, 10000);
         matrix = glm::translate<float>(matrix, glm::vec3(0, 0, 10));
         matrix = glm::rotate<float>(matrix, m_angle, glm::vec3(1, 1, 1));
@@ -394,6 +399,27 @@ struct winhnd : public vk_window
         m_display.quit();
     }
 
+    void key(uint32_t k, bool pressed)
+    {
+        if (pressed) {
+            fmt::print("key {}\n",k);
+            switch (k) {
+                case 57: {
+                    m_animate = !m_animate;
+                    break;
+                }
+                case 32: {
+                    m_debug = !m_debug;
+                    break;
+                }
+                case 16: {
+                    m_display.quit();
+                    break;
+                }
+            }
+        }
+    }
+
     display &m_display;
     vk_queue queue;
     vk_command_pool cmd_pool;
@@ -409,6 +435,8 @@ struct winhnd : public vk_window
     vk_graphics_pipeline pipeline;
     double m_time;
     double m_angle;
+    bool m_animate;
+    bool m_debug;
 };
 
 

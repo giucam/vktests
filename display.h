@@ -104,6 +104,7 @@ public:
         inline void update(double seconds) { m_interface->update(seconds); }
         inline void mouse_motion(double x, double y) { m_interface->mouse_motion(x, y); }
         inline void mouse_button(bool pressed) { m_interface->mouse_button(pressed); }
+        inline void key(uint32_t key, bool pressed) { m_interface->key(key, pressed); }
 
     private:
         struct hnd_interface
@@ -112,6 +113,7 @@ public:
             virtual void update(double seconds) = 0;
             virtual void mouse_motion(double x, double y) = 0;
             virtual void mouse_button(bool pressed) = 0;
+            virtual void key(uint32_t key, bool pressed) = 0;
         };
         template<class T>
         struct hnd : hnd_interface
@@ -120,6 +122,7 @@ public:
             void update(double seconds) override { data.update(seconds); }
             void mouse_motion(double x, double y) override { data.mouse_motion(x, y); }
             void mouse_button(bool pressed) override { data.mouse_button(pressed); }
+            void key(uint32_t key, bool pressed) override { data.key(key, pressed); }
 
             T &data;
         };
