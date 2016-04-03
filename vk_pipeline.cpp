@@ -126,7 +126,7 @@ vk_pipeline_layout::~vk_pipeline_layout()
 //--
 
 
-vk_renderpass::vk_renderpass(const vk_device &device, VkFormat format)
+vk_renderpass::vk_renderpass(const vk_device &device, VkFormat format, VkFormat depth_format)
              : m_device(device)
 {
     VkAttachmentDescription attachment_desc[] = {
@@ -140,7 +140,18 @@ vk_renderpass::vk_renderpass(const vk_device &device, VkFormat format)
             VK_ATTACHMENT_STORE_OP_DONT_CARE, //stencil store op
             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, //initial layout
             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, //final layout
-        }
+        },
+        {
+            0, //flags
+            depth_format, //format
+            VK_SAMPLE_COUNT_1_BIT, //samples
+            VK_ATTACHMENT_LOAD_OP_CLEAR, //load op
+            VK_ATTACHMENT_STORE_OP_DONT_CARE, //store op
+            VK_ATTACHMENT_LOAD_OP_DONT_CARE, //stencil load op
+            VK_ATTACHMENT_STORE_OP_DONT_CARE, //stencil store op
+            VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, //initial layout
+            VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, //final layout
+        },
     };
     VkAttachmentReference color_attachments[] = {
         { 0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, },
@@ -149,8 +160,8 @@ vk_renderpass::vk_renderpass(const vk_device &device, VkFormat format)
 //         { VK_ATTACHMENT_UNUSED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, },
 //     };
     const VkAttachmentReference depth_reference = {
-        VK_ATTACHMENT_UNUSED,
-        VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        .attachment = 1,
+        .layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
     };
 //     const uint32_t preserve_attachments[] = { 0 };
     VkSubpassDescription subpass_desc[] = {
@@ -169,7 +180,7 @@ vk_renderpass::vk_renderpass(const vk_device &device, VkFormat format)
     };
     VkRenderPassCreateInfo create_info = {
         VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO, nullptr, 0,
-        1, attachment_desc,
+        sizeof(attachment_desc) / sizeof(VkAttachmentDescription), attachment_desc,
         1, subpass_desc,
         0, nullptr,
     };
@@ -316,6 +327,37 @@ void vk_graphics_pipeline::create(const vk_renderpass &render_pass, const vk_pip
                             //described in Multisample Coverage.
     };
 
+    VkPipelineDepthStencilStateCreateInfo depthstencil_info = {
+        VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO, //type
+        nullptr, //next
+        0, //flags
+        true, //depthTestEnable
+        true, //depthWriteEnable
+        VK_COMPARE_OP_LESS_OR_EQUAL, //depthCompareOp
+        false, //depthBoundsTestEnable
+        false, //stencilTestEnable
+        { //back
+            .failOp = VK_STENCIL_OP_KEEP,
+            .passOp = VK_STENCIL_OP_KEEP,
+            .depthFailOp = VK_STENCIL_OP_KEEP,
+            .compareOp = VK_COMPARE_OP_ALWAYS,
+            .compareMask = 0,
+            .writeMask = 0,
+            .reference = 0,
+        },
+        { //front
+            .failOp = VK_STENCIL_OP_KEEP,
+            .passOp = VK_STENCIL_OP_KEEP,
+            .depthFailOp = VK_STENCIL_OP_KEEP,
+            .compareOp = VK_COMPARE_OP_ALWAYS,
+            .compareMask = 0,
+            .writeMask = 0,
+            .reference = 0,
+        },
+        0.f, //minDepthBounds
+        0.f, //maxDepthBounds
+    };
+
     VkPipelineColorBlendAttachmentState colorblend_attachment_info[1] = {
         {
             m_blending.enabled, // blendEnable controls whether blending is enabled for the corresponding color attachment. If blending is not enabled, the source
@@ -367,7 +409,7 @@ void vk_graphics_pipeline::create(const vk_renderpass &render_pass, const vk_pip
         &viewport_info, //viewport state
         &rasterization_info, //rasterization state
         &multisample_info, //pMultisampleState is a pointer to an instance of the VkPipelineMultisampleStateCreateInfo, or NULL if the pipeline has rasterization disabled.
-        nullptr, //pDepthStencilState is a pointer to an instance of the VkPipelineDepthStencilStateCreateInfo structure, or NULL if the pipeline has rasterization disabled or if the subpass of the render pass the pipeline is created against does not use a depth/stencil attachment
+        &depthstencil_info, //pDepthStencilState is a pointer to an instance of the VkPipelineDepthStencilStateCreateInfo structure, or NULL if the pipeline has rasterization disabled or if the subpass of the render pass the pipeline is created against does not use a depth/stencil attachment
         &colorblend_info, // pColorBlendState is a pointer to an instance of the VkPipelineColorBlendStateCreateInfo structure, or NULL if the pipeline has rasterization disabled or if the subpass of the render pass the pipeline is created against does not use any color attachments
         &dynamicstate_info, //pDynamicState is a pointer to VkPipelineDynamicStateCreateInfo and is used to indicate which properties of the pipeline state object are dynamic and can be changed independently of the pipeline state. This can be NULL, which means no state in the pipeline is considered dynamic
         pipeline_layout.get_handle(), //layout is the description of binding locations used by both the pipeline and descriptor sets used with the pipeline
@@ -442,19 +484,19 @@ void vk_graphics_pipeline::get_bindings_info(VkPipelineVertexInputStateCreateInf
 //--
 
 
-vk_framebuffer::vk_framebuffer(const vk_device &device, const vk_image &img, const vk_renderpass &rpass)
+vk_framebuffer::vk_framebuffer(const vk_device &device, const vk_image &img, const vk_image_view &depth, const vk_renderpass &rpass)
               : m_device(device)
               , m_image(img)
-              , m_view(m_image.create_image_view())
+              , m_view(m_image.create_image_view(vk_image::aspect::color))
 {
-    VkImageView view_handle = m_view.get_handle();
+    VkImageView view_handles[] = { m_view.get_handle(), depth.get_handle() };
     VkFramebufferCreateInfo info = {
         VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO, //type
         nullptr, //next
         0, //flags
         rpass.get_handle(), //render pass
-        1, //attachment count
-        &view_handle, //attachments
+        sizeof(view_handles) / sizeof(VkImageView), //attachment count
+        view_handles, //attachments
         m_image.get_width(), //width
         m_image.get_height(), //height
         1, //layers

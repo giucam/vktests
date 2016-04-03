@@ -10,6 +10,7 @@
 
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
+#define GLM_FORCE_LEFT_HANDED
 #include <glm/mat4x4.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -88,7 +89,10 @@ public:
         , m_device(m_phys_device.create_device<vk_swapchain_extension>(m_family_queue_index))
         , m_swapchain_ext(m_device.get_extension_object<vk_swapchain_extension>())
         , m_swapchain(m_swapchain_ext->create_swapchain(m_surface, m_format))
-        , m_renderpass(m_device, m_format.format)
+        , m_depth({ vk_image(m_device, VK_FORMAT_D16_UNORM, vk_image::usage::depth_stencil_attachment, vk_image::type::t2D, { (uint32_t)w, (uint32_t)h, 1u }),
+                    vk_device_memory(m_device, vk_device_memory::property::device_local, m_depth.image.get_required_memory_size(), m_depth.image.get_required_memory_type()),
+                    m_depth.image.create_image_view(vk_image::aspect::depth) })
+        , m_renderpass(m_device, m_format.format, m_depth.image.get_format())
     {
         print("using queue index {}\n", m_family_queue_index);
 
@@ -98,12 +102,15 @@ public:
         m_framebuffers.reserve(imgs.size());
         for (const vk_image &img: imgs) {
             print("creating buffer {}\n",(void*)&img);
-            m_framebuffers.emplace_back(get_device(), img, m_renderpass);
+            m_framebuffers.emplace_back(get_device(), img, m_depth.view, m_renderpass);
         }
     }
 
     void show() { m_window.show(); }
     void schedule_update() { m_window.update(); }
+
+    uint32_t get_width() const { return m_window.get_width(); }
+    uint32_t get_height() const { return m_window.get_height(); }
 
     const vk_surface &get_surface() const { return m_surface; }
     const vk_device &get_device() const { return m_device; }
@@ -134,6 +141,11 @@ private:
     std::shared_ptr<vk_swapchain_extension> m_swapchain_ext;
     vk_swapchain m_swapchain;
     std::vector<vk_framebuffer> m_framebuffers;
+    struct {
+        vk_image image;
+        vk_device_memory mem;
+        vk_image_view view;
+    } m_depth;
     vk_renderpass m_renderpass;
     uint32_t m_fb_index;
 };
@@ -284,8 +296,8 @@ struct winhnd : public vk_window
 //             assert(time_diff<30);
 
         m_angle += 0.5 * time_diff;
-        glm::mat4 matrix = glm::perspectiveLH<double>(1, 1, 0.01, 1000);
-        matrix = glm::translate<float>(matrix, glm::vec3(0, 0, 3));
+        glm::mat4 matrix = glm::perspective<double>(1, 1, 0.1, 10000);
+        matrix = glm::translate<float>(matrix, glm::vec3(0, 0, 10));
         matrix = glm::rotate<float>(matrix, m_angle, glm::vec3(1, 1, 1));
 
         uniform_buffer.map([&matrix](void *ptr) {
@@ -298,18 +310,20 @@ struct winhnd : public vk_window
 
         cmd_buffer.begin();
 
-        VkClearValue clear_values[1];
+        VkClearValue clear_values[2];
         clear_values[0].color.float32[0] = 1.0f;
         clear_values[0].color.float32[1] = 1.0f;
         clear_values[0].color.float32[2] = 1.0f;
         clear_values[0].color.float32[3] = 1.0f;
+
+        clear_values[1].depthStencil = { 1.f, 0 };
         VkRenderPassBeginInfo render_pass_begin_info = {
             VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, //type
             nullptr, //next
             get_renderpass().get_handle(), //render pass
             framebuffer.get_handle(), //framebuffer
             { { 0, 0 }, { framebuffer.get_width(), framebuffer.get_height() } }, //render area
-            1, //clear value count
+            sizeof(clear_values) / sizeof(VkClearValue), //clear value count
             clear_values, //clear values
         };
 

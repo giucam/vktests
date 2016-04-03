@@ -13,6 +13,7 @@
 class window;
 class vk_device;
 class vk_physical_device;
+class vk_device_memory;
 
 class vk_exception : public std::exception
 {
@@ -249,24 +250,58 @@ private:
 class vk_image
 {
 public:
+    enum class type {
+        t1D = VK_IMAGE_TYPE_1D,
+        t2D = VK_IMAGE_TYPE_2D,
+        t3D = VK_IMAGE_TYPE_3D,
+    };
+    enum class usage {
+        transfer_src = VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+        transfer_dst = VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+        sampled = VK_IMAGE_USAGE_SAMPLED_BIT,
+        storage = VK_IMAGE_USAGE_STORAGE_BIT,
+        color_attachment = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+        depth_stencil_attachment = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+        transient_attachment = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT,
+        input_attachment = VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT,
+    };
+    enum class aspect {
+        color = VK_IMAGE_ASPECT_COLOR_BIT,
+        depth = VK_IMAGE_ASPECT_DEPTH_BIT,
+        stencil = VK_IMAGE_ASPECT_STENCIL_BIT,
+        metadata = VK_IMAGE_ASPECT_METADATA_BIT,
+    };
+
     vk_image(const vk_device &device, VkImage img, const VkExtent3D &extent);
+    vk_image(const vk_device &device, VkFormat format, usage u, type t, const VkExtent3D &extent);
     vk_image(const vk_image &) = delete;
-    vk_image(vk_image &&);
+    vk_image(vk_image &&) = default;
     ~vk_image();
 
     uint32_t get_width() const { return m_extent.width; }
     uint32_t get_height() const { return m_extent.height; }
     uint32_t get_depth() const { return m_extent.depth; }
 
+    VkFormat get_format() const { return m_format; }
+
+    uint64_t get_required_memory_size() const { return m_mem_reqs.size; }
+    uint64_t get_required_memory_alignment() const { return m_mem_reqs.alignment; }
+    uint32_t get_required_memory_type() const { return m_mem_reqs.memoryTypeBits; }
+
+    void bind_memory(vk_device_memory *mem, uint64_t offset);
+
     VkImage get_handle() const { return m_handle; }
 
-    vk_image_view create_image_view() const;
+    vk_image_view create_image_view(aspect a) const;
 
 private:
     const vk_device &m_device;
     VkImage m_handle;
     VkExtent3D m_extent;
     bool m_owns_handle;
+    VkMemoryRequirements m_mem_reqs;
+    type m_type;
+    VkFormat m_format;
 };
 
 class vk_device_memory

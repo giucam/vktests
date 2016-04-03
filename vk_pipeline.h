@@ -109,7 +109,7 @@ private:
 class vk_renderpass
 {
 public:
-    vk_renderpass(const vk_device &device, VkFormat format);
+    vk_renderpass(const vk_device &device, VkFormat format, VkFormat depth_format);
     ~vk_renderpass();
 
     VkRenderPass get_handle() const { return m_handle; }
@@ -228,7 +228,7 @@ private:
 class vk_framebuffer
 {
 public:
-    vk_framebuffer(const vk_device &device, const vk_image &img, const vk_renderpass &rpass);
+    vk_framebuffer(const vk_device &device, const vk_image &img, const vk_image_view &depth, const vk_renderpass &rpass);
 
     uint32_t get_width() const { return m_image.get_width(); }
     uint32_t get_height() const { return m_image.get_height(); }

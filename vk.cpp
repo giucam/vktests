@@ -386,17 +386,42 @@ vk_image::vk_image(const vk_device &device, VkImage img, const VkExtent3D &exten
         , m_handle(img)
         , m_extent(extent)
         , m_owns_handle(false)
+        , m_type(type::t2D)
+        , m_format(VK_FORMAT_B8G8R8A8_SRGB)
 {
-    VkMemoryRequirements req;
-    vkGetImageMemoryRequirements(device.get_handle(), img, &req);
+    vkGetImageMemoryRequirements(device.get_handle(), img, &m_mem_reqs);
 }
 
-vk_image::vk_image(vk_image &&i)
-        : m_device(i.m_device)
-        , m_handle(i.m_handle)
-        , m_extent(i.m_extent)
-        , m_owns_handle(i.m_owns_handle)
+vk_image::vk_image(const vk_device &device, VkFormat format, usage u, type t, const VkExtent3D &extent)
+        : m_device(device)
+        , m_extent(extent)
+        , m_owns_handle(true)
+        , m_type(t)
+        , m_format(format)
 {
+    const VkImageCreateInfo image_info = {
+        VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, //type
+        nullptr, //next
+        0, //flags
+        (VkImageType)t, //image type
+        format, //format
+        extent, //extent
+        1, //mip levels
+        1, //array layers
+        VK_SAMPLE_COUNT_1_BIT, //samples
+        VK_IMAGE_TILING_OPTIMAL, //tiling
+        (VkImageUsageFlagBits)u, //usage
+        VK_SHARING_MODE_EXCLUSIVE, //sharing mode
+        0, //queue family index count
+        nullptr, //queue family indices
+        VK_IMAGE_LAYOUT_UNDEFINED, //initial layout
+    };
+    VkResult res = vkCreateImage(m_device.get_handle(), &image_info, nullptr, &m_handle);
+    if (res != VK_SUCCESS) {
+        throw vk_exception("Failed to create image: {}\n", res);
+    }
+
+    vkGetImageMemoryRequirements(device.get_handle(), m_handle, &m_mem_reqs);
 }
 
 vk_image::~vk_image()
@@ -406,7 +431,15 @@ vk_image::~vk_image()
     }
 }
 
-vk_image_view vk_image::create_image_view() const
+void vk_image::bind_memory(vk_device_memory *mem, uint64_t offset)
+{
+    VkResult res = vkBindImageMemory(m_device.get_handle(), m_handle, mem->get_handle(), offset);
+    if (res != VK_SUCCESS) {
+        throw vk_exception("Failed to bind image memory: {}\n", res);
+    }
+}
+
+vk_image_view vk_image::create_image_view(aspect a) const
 {
     VkImageView view;
     VkImageViewCreateInfo info = {
@@ -414,8 +447,8 @@ vk_image_view vk_image::create_image_view() const
         nullptr, //next
         0, //flags
         m_handle, //image
-        VK_IMAGE_VIEW_TYPE_2D, //view type
-        VK_FORMAT_B8G8R8A8_SRGB, //format
+        (VkImageViewType)m_type, //view type
+        (VkFormat)m_format, //format
         { //components
             VK_COMPONENT_SWIZZLE_R, //r
             VK_COMPONENT_SWIZZLE_G, //g
@@ -423,9 +456,9 @@ vk_image_view vk_image::create_image_view() const
             VK_COMPONENT_SWIZZLE_A, //a
         },
         { //sub resource range
-            VK_IMAGE_ASPECT_COLOR_BIT, //aspect mask
+            (VkImageAspectFlagBits)a, //aspect mask
             0, //base mip level
-            0, //level count
+            1, //level count
             0, //base array layer
             1, //layer count
         },
