@@ -177,6 +177,7 @@ struct winhnd : public vk_window
         , m_angle(0)
         , m_animate(true)
         , m_debug(false)
+        , m_camera_pos({ 0, 0, 10, 0, 0, 0 })
     {
         VkResult res;
 
@@ -301,8 +302,13 @@ struct winhnd : public vk_window
 //             assert(time_diff<30);
 
         m_angle += 0.5 * time_diff * m_animate;
+
+        m_camera_pos.x += m_camera_pos.move_x * time_diff;
+        m_camera_pos.y += m_camera_pos.move_y * time_diff;
+        m_camera_pos.z += m_camera_pos.move_z * time_diff;
+
         glm::mat4 matrix = glm::perspective<double>(1, 1, 0.1, 10000);
-        matrix = glm::translate<float>(matrix, glm::vec3(0, 0, 10));
+        matrix = glm::translate<float>(matrix, glm::vec3(m_camera_pos.x, m_camera_pos.y, m_camera_pos.z));
         matrix = glm::rotate<float>(matrix, m_angle, glm::vec3(1, 1, 1));
 
         uniform_buffer.map([&matrix](void *ptr) {
@@ -406,16 +412,27 @@ struct winhnd : public vk_window
             switch (k) {
                 case 57: {
                     m_animate = !m_animate;
-                    break;
+                    return;
                 }
                 case 32: {
                     m_debug = !m_debug;
-                    break;
+                    return;
                 }
                 case 16: {
                     m_display.quit();
-                    break;
+                    return;
                 }
+            }
+        }
+
+        switch (k) {
+            case 17: {
+                m_camera_pos.move_z = 2 * pressed;
+                break;
+            }
+            case 31: {
+                m_camera_pos.move_z = -2 * pressed;
+                break;
             }
         }
     }
@@ -437,6 +454,10 @@ struct winhnd : public vk_window
     double m_angle;
     bool m_animate;
     bool m_debug;
+    struct {
+        double x, y, z;
+        double move_x, move_y, move_z;
+    } m_camera_pos;
 };
 
 
