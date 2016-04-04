@@ -217,7 +217,6 @@ struct winhnd : public vk_window
         , m_angle(0)
         , m_animate(true)
         , m_debug(false)
-        , m_camera_pos({ 0, 0, 10, 0, 0, 0 })
     {
         VkResult res;
 
@@ -228,12 +227,12 @@ struct winhnd : public vk_window
                 { { -1.0f, -1.0f, -1.f, }, { 1, 0, 0, 1, }, },
                 { { -1.0f,  1.0f, -1.f, }, { 0, 1, 0, 1, }, },
                 { {  1.0f,  1.0f, -1.f, }, { 0, 0, 1, 1, }, },
-                { {  1.0f, -1.0f, -1.f, }, { 0, 0, 0, 0, }, },
+                { {  1.0f, -1.0f, -1.f, }, { 0, 0, 0, 1, }, },
 
                 { { -1.0f, -1.0f,  1.0f, }, { 1, 0, 0, 1, }, },
                 { { -1.0f,  1.0f,  1.0f, }, { 0, 1, 0, 1, }, },
                 { {  1.0f,  1.0f,  1.0f, }, { 0, 0, 1, 1, }, },
-                { {  1.0f, -1.0f,  1.0f, }, { 0, 0, 0, 0, }, },
+                { {  1.0f, -1.0f,  1.0f, }, { 0, 0, 0, 1, }, },
             };
 
             memcpy(data, vertices, sizeof(vertices));
@@ -326,6 +325,38 @@ struct winhnd : public vk_window
         if (res != VK_SUCCESS) {
             throw vk_exception("Failed to wait queue: {}\n", res);
         }
+
+        m_camera.projection = glm::perspective<double>(glm::radians(60.f), 1, 0.1f, 256.f);
+
+        m_camera.pos = glm::vec3(0, 0, -10);
+        update_camera_orientation();
+        m_mouse_pressed = false;
+    }
+
+    void update_camera_orientation()
+    {
+        m_camera.direction = glm::vec3(cos(m_camera.angle.y) * sin(m_camera.angle.x),
+                                       sin(m_camera.angle.y),
+                                       cos(m_camera.angle.y) * cos(m_camera.angle.x));
+
+        auto right = glm::vec3(sin(m_camera.angle.x - 3.1415/2.), 0, cos(m_camera.angle.x - 3.1415/2.));
+        m_camera.up = glm::cross(right, m_camera.direction);
+    }
+
+    void update_camera(float time_diff)
+    {
+        m_camera.pos += m_camera.move * time_diff;
+
+        if (m_mouse_pressed) {
+            auto delta = m_cur_mouse_pos - m_mouse_pos;
+            delta /= 8.f;
+
+            m_camera.angle.x += delta.x * time_diff;
+            m_camera.angle.y += delta.y * time_diff;
+            update_camera_orientation();
+        }
+        m_camera.view = glm::lookAt(m_camera.pos, m_camera.pos + m_camera.direction, m_camera.up);
+        m_mouse_pos = m_cur_mouse_pos;
     }
 
     void update(double time)
@@ -342,13 +373,11 @@ struct winhnd : public vk_window
 
         m_angle += 0.5 * time_diff * m_animate;
 
-        m_camera_pos.x += m_camera_pos.move_x * time_diff;
-        m_camera_pos.y += m_camera_pos.move_y * time_diff;
-        m_camera_pos.z += m_camera_pos.move_z * time_diff;
+        update_camera(time_diff);
 
-        glm::mat4 matrix = glm::perspective<double>(2, 1, 0.1f, 256.f);
-        matrix = glm::translate<float>(matrix, glm::vec3(m_camera_pos.x, m_camera_pos.y, m_camera_pos.z));
-        matrix = glm::rotate<float>(matrix, m_angle, glm::vec3(1, 1, 1));
+        glm::mat4 model(1.);
+        model = glm::rotate<float>(model, m_angle, glm::vec3(1, 1, 1));
+        glm::mat4 matrix = m_camera.projection * m_camera.view * model;
 
 //         fmt::print("{}\n",m_camera_pos.z);
 //         fmt::print("{}\n", matrix);
@@ -437,13 +466,12 @@ struct winhnd : public vk_window
 
     void mouse_motion(double x, double y)
     {
-//             print("motion {} {}\n", x, y);
+        m_cur_mouse_pos = glm::vec2(x, y);
     }
 
     void mouse_button(bool pressed)
     {
-//             print("button {}\n",pressed);
-        m_display.quit();
+        m_mouse_pressed = pressed;
     }
 
     void key(uint32_t k, bool pressed)
@@ -455,7 +483,7 @@ struct winhnd : public vk_window
                     m_animate = !m_animate;
                     return;
                 }
-                case 32: {
+                case 24: {
                     m_debug = !m_debug;
                     return;
                 }
@@ -468,12 +496,19 @@ struct winhnd : public vk_window
 
         switch (k) {
             case 17: {
-                m_camera_pos.move_z = 2 * pressed;
+                m_camera.move.z = -2 * pressed;
                 break;
             }
             case 31: {
-                m_camera_pos.move_z = -2 * pressed;
+                m_camera.move.z = 2 * pressed;
                 break;
+            }
+            case 32: {
+                m_camera.move.x = 2 * pressed;
+                break;
+            }
+            case 30: {
+                m_camera.move.x = -1 * pressed;
             }
         }
     }
@@ -496,9 +531,15 @@ struct winhnd : public vk_window
     bool m_animate;
     bool m_debug;
     struct {
-        double x, y, z;
-        double move_x, move_y, move_z;
-    } m_camera_pos;
+        glm::mat4 projection;
+        glm::mat4 view;
+        glm::vec3 move;
+
+        glm::vec3 pos, direction, up;
+        glm::vec2 angle;
+    } m_camera;
+    glm::vec2 m_mouse_pos, m_cur_mouse_pos;
+    bool m_mouse_pressed;
 };
 
 

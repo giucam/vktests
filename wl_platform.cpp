@@ -337,9 +337,12 @@ void wl_platform_window::send_update(wl_callback *, uint32_t time)
 
 
 
-void pointer::enter(wl_pointer *, uint32_t serial, wl_surface *surface, wl_fixed_t x, wl_fixed_t y)
+void pointer::enter(wl_pointer *, uint32_t serial, wl_surface *surface, wl_fixed_t fx, wl_fixed_t fy)
 {
     m_window = wl_platform_window::from_surface(surface);
+    double x = wl_fixed_to_double(fx);
+    double y = wl_fixed_to_double(fy);
+    m_window->get_handler().mouse_motion(x, y);
 }
 
 void pointer::leave(wl_pointer *, uint32_t serial, wl_surface *surface)

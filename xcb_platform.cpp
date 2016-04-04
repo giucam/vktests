@@ -25,6 +25,9 @@ public:
 
     void mouse_press_event(xcb_button_press_event_t *e);
     void mouse_release_event(xcb_button_release_event_t *e);
+    void mouse_motion_event(xcb_motion_notify_event_t *e);
+    void mouse_enter_event(xcb_enter_notify_event_t *e);
+    void mouse_leave_event(xcb_leave_notify_event_t *e);
     void key_press_event(xcb_key_press_event_t *e);
     void key_release_event(xcb_key_release_event_t *e);
 
@@ -87,6 +90,21 @@ public:
             case XCB_BUTTON_RELEASE: {
                 xcb_button_release_event_t *release = (xcb_button_release_event_t *)event;
                 window(release->event)->mouse_release_event(release);
+                break;
+            }
+            case XCB_MOTION_NOTIFY: {
+                auto motion = (xcb_motion_notify_event_t *)event;
+                window(motion->event)->mouse_motion_event(motion);
+                break;
+            }
+            case XCB_ENTER_NOTIFY: {
+                auto enter = (xcb_enter_notify_event_t *)event;
+                window(enter->event)->mouse_enter_event(enter);
+                break;
+            }
+            case XCB_LEAVE_NOTIFY: {
+                auto leave = (xcb_leave_notify_event_t *)event;
+                window(leave->event)->mouse_leave_event(leave);
                 break;
             }
             case XCB_KEY_PRESS: {
@@ -180,7 +198,9 @@ xcb_platform_window::xcb_platform_window(xcb_platform_display *dpy, int width, i
       XCB_EVENT_MASK_EXPOSURE |
       XCB_EVENT_MASK_STRUCTURE_NOTIFY |
       XCB_EVENT_MASK_KEY_PRESS | XCB_EVENT_MASK_KEY_RELEASE |
-      XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE
+      XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE |
+      XCB_EVENT_MASK_POINTER_MOTION |
+      XCB_EVENT_MASK_ENTER_WINDOW | XCB_EVENT_MASK_LEAVE_WINDOW
    };
 
    xcb_screen_iterator_t iter = xcb_setup_roots_iterator(xcb_get_setup(m_display->m_connection));
@@ -274,6 +294,20 @@ void xcb_platform_window::mouse_press_event(xcb_button_press_event_t *e)
 void xcb_platform_window::mouse_release_event(xcb_button_release_event_t *e)
 {
    m_winhnd.mouse_button(false);
+}
+
+void xcb_platform_window::mouse_motion_event(xcb_motion_notify_event_t *e)
+{
+    m_winhnd.mouse_motion(e->event_x, e->event_y);
+}
+
+void xcb_platform_window::mouse_enter_event(xcb_enter_notify_event_t *e)
+{
+    m_winhnd.mouse_motion(e->event_x, e->event_y);
+}
+
+void xcb_platform_window::mouse_leave_event(xcb_leave_notify_event_t *e)
+{
 }
 
 void xcb_platform_window::key_press_event(xcb_key_press_event_t *e)
