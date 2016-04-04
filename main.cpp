@@ -89,12 +89,17 @@ public:
         , m_device(m_phys_device.create_device<vk_swapchain_extension>(m_family_queue_index))
         , m_swapchain_ext(m_device.get_extension_object<vk_swapchain_extension>())
         , m_swapchain(m_swapchain_ext->create_swapchain(m_surface, m_format))
-        , m_depth({ vk_image(m_device, VK_FORMAT_D16_UNORM, vk_image::usage::depth_stencil_attachment, vk_image::type::t2D, { (uint32_t)w, (uint32_t)h, 1u }),
+        , m_depth({ vk_image(m_device, VK_FORMAT_D24_UNORM_S8_UINT, vk_image::usage::depth_stencil_attachment, vk_image::type::t2D, { (uint32_t)w, (uint32_t)h, 1u }),
                     vk_device_memory(m_device, vk_device_memory::property::device_local, m_depth.image.get_required_memory_size(), m_depth.image.get_required_memory_type()),
-                    m_depth.image.create_image_view(vk_image::aspect::depth) })
+                    vk_image_view() })
         , m_renderpass(m_device, m_format.format, m_depth.image.get_format())
+        , m_cmd_pool(get_device().create_command_pool())
+        , m_init_cmd_buf(m_cmd_pool.create_command_buffer())
     {
         print("using queue index {}\n", m_family_queue_index);
+
+        m_depth.image.bind_memory(&m_depth.mem, 0);
+        m_depth.view = m_depth.image.create_image_view(vk_image::aspect::depth);
 
         const auto &imgs = m_swapchain.get_images();
         print("{} images available\n", imgs.size());
@@ -104,6 +109,26 @@ public:
             print("creating buffer {}\n",(void*)&img);
             m_framebuffers.emplace_back(get_device(), img, m_depth.view, m_renderpass);
         }
+
+        m_init_cmd_buf.begin();
+
+        VkImageMemoryBarrier image_memory_barrier = {
+            VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, //type
+            nullptr, //next
+            0, //src access mask
+            VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, //dst access mask
+            VK_IMAGE_LAYOUT_UNDEFINED, //old image layout
+            VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, //new image layout
+            0, //src queue family index
+            0, //dst queue family index
+            m_depth.image.get_handle(), //image
+            { VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 }, //subresource range
+        };
+
+        vkCmdPipelineBarrier(m_init_cmd_buf.get_handle(), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, 0, nullptr, 0,
+                            nullptr, 1, &image_memory_barrier);
+
+
     }
 
     void show() { m_window.show(); }
@@ -114,6 +139,7 @@ public:
 
     const vk_surface &get_surface() const { return m_surface; }
     const vk_device &get_device() const { return m_device; }
+    vk_command_buffer &get_init_command_buffer() { return m_init_cmd_buf; }
     const vk_renderpass &get_renderpass() const { return m_renderpass; }
     const vk_framebuffer &acquire_next_framebuffer()
     {
@@ -148,8 +174,22 @@ private:
         vk_image_view view;
     } m_depth;
     vk_renderpass m_renderpass;
+    vk_command_pool m_cmd_pool;
     uint32_t m_fb_index;
+    vk_command_buffer m_init_cmd_buf;
 };
+
+inline std::ostream &operator<<(std::ostream &os, const glm::mat4x4 &m)
+{
+    for (int i = 0; i < 4; ++i) {
+        const auto &col = m[i];
+        for (int j = 0; j < 4; ++j) {
+            os << col[j] << ' ';
+        }
+        os << '\n';
+    }
+    return os;
+}
 
 struct winhnd : public vk_window
 {
@@ -180,9 +220,6 @@ struct winhnd : public vk_window
         , m_camera_pos({ 0, 0, 10, 0, 0, 0 })
     {
         VkResult res;
-
-        auto init_cmd_buf = cmd_pool.create_command_buffer();
-        init_cmd_buf.begin();
 
         print("mem size {}\n",buf.get_required_memory_size());
         buf.bind_memory(&memory, 0);
@@ -263,11 +300,11 @@ struct winhnd : public vk_window
         pipeline.create(get_renderpass(), pipeline_layout);
 
 
-        init_cmd_buf.end();
+        get_init_command_buffer().end();
 
         vkDeviceWaitIdle(get_device().get_handle());
 
-        const VkCommandBuffer cmd_bufs[] = { init_cmd_buf.get_handle() };
+        const VkCommandBuffer cmd_bufs[] = { get_init_command_buffer().get_handle() };
         VkSubmitInfo submit_info = {
             VK_STRUCTURE_TYPE_SUBMIT_INFO, //type
             nullptr, //next
@@ -301,15 +338,20 @@ struct winhnd : public vk_window
         }
 //             assert(time_diff<30);
 
+        vkDeviceWaitIdle(get_device().get_handle());
+
         m_angle += 0.5 * time_diff * m_animate;
 
         m_camera_pos.x += m_camera_pos.move_x * time_diff;
         m_camera_pos.y += m_camera_pos.move_y * time_diff;
         m_camera_pos.z += m_camera_pos.move_z * time_diff;
 
-        glm::mat4 matrix = glm::perspective<double>(1, 1, 0.1, 10000);
+        glm::mat4 matrix = glm::perspective<double>(2, 1, 0.1f, 256.f);
         matrix = glm::translate<float>(matrix, glm::vec3(m_camera_pos.x, m_camera_pos.y, m_camera_pos.z));
         matrix = glm::rotate<float>(matrix, m_angle, glm::vec3(1, 1, 1));
+
+//         fmt::print("{}\n",m_camera_pos.z);
+//         fmt::print("{}\n", matrix);
 
         uniform_buffer.map([&matrix](void *ptr) {
             uniform_data *data = static_cast<uniform_data *>(ptr);
@@ -352,8 +394,6 @@ struct winhnd : public vk_window
         vkCmdDrawIndexed(cmd_buffer.get_handle(), 36, 1, 0, 0, 0);
         vkCmdEndRenderPass(cmd_buffer.get_handle());
 
-        cmd_buffer.end();
-
 
         VkImageMemoryBarrier image_memory_barrier = {
             VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, //type
@@ -371,6 +411,7 @@ struct winhnd : public vk_window
         vkCmdPipelineBarrier(cmd_buffer.get_handle(), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, 0, nullptr, 0,
                             nullptr, 1, &image_memory_barrier);
 
+        cmd_buffer.end();
 
         VkPipelineStageFlags pipe_stage_flags = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
         VkCommandBuffer cmd_buf_raw = cmd_buffer.get_handle();

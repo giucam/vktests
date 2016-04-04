@@ -158,36 +158,46 @@ vk_command_buffer vk_command_pool::create_command_buffer()
 
 //--
 
-vk_device::vk_device(const vk_physical_device &phys)
-         : m_physical_device(phys)
+
+struct vk_device::data {
+    data(const vk_physical_device &dev, VkDevice h, uint32_t qfi, const std::vector<std::string> &exts)
+        : handle(h)
+        , extensions(exts)
+        , physical_device(dev)
+        , queue_family_index(qfi)
+    {}
+    ~data()
+    {
+        vkDestroyDevice(handle, nullptr);
+    }
+
+    VkDevice handle;
+    std::vector<std::string> extensions;
+    const vk_physical_device &physical_device;
+    uint32_t queue_family_index;
+};
+
+vk_device::vk_device()
 {
 }
 
-vk_device::vk_device(vk_device &&d)
-         : m_handle(d.m_handle)
-         , m_extensions(std::move(d.m_extensions))
-         , m_physical_device(d.m_physical_device)
-         , m_queue_family_index(d.m_queue_family_index)
+vk_device::vk_device(const vk_physical_device &phys, VkDevice handle, uint32_t qfi, const std::vector<std::string> &exts)
+         : m_data(std::make_shared<data>(phys, handle, qfi, exts))
 {
-}
-
-vk_device::~vk_device()
-{
-    vkDestroyDevice(m_handle, nullptr);
 }
 
 vk_queue vk_device::get_queue(uint32_t index) const
 {
     VkQueue queue;
-    vkGetDeviceQueue(m_handle, m_queue_family_index, index, &queue);
-    return vk_queue(queue, m_queue_family_index, index);
+    vkGetDeviceQueue(m_data->handle, m_data->queue_family_index, index, &queue);
+    return vk_queue(queue, m_data->queue_family_index, index);
 }
 
 vk_command_pool vk_device::create_command_pool() const
 {
     VkCommandPoolCreateInfo command_pool_info = {
-        VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO, nullptr, 0,
-        m_queue_family_index, //queue family index
+        VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO, nullptr, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+        m_data->queue_family_index, //queue family index
     };
     VkCommandPool cmd_pool;
     VkResult res = vkCreateCommandPool(get_handle(), &command_pool_info, nullptr, &cmd_pool);
@@ -199,12 +209,22 @@ vk_command_pool vk_device::create_command_pool() const
 
 bool vk_device::is_extension_enabled(stringview extension) const
 {
-    for (const string &ext: m_extensions) {
+    for (const string &ext: m_data->extensions) {
         if (extension == ext) {
             return true;
         }
     }
     return false;
+}
+
+const vk_physical_device &vk_device::get_physical_device() const
+{
+    return m_data->physical_device;
+}
+
+VkDevice vk_device::get_handle() const
+{
+    return m_data->handle;
 }
 
 
@@ -272,11 +292,7 @@ vk_device vk_physical_device::do_create_device(uint32_t queue_family_index, cons
         throw vk_exception("Failed to create a Vulkan device: {}\n", res);
     }
 
-    auto device = vk_device(*this);
-    device.m_handle = dev;
-    device.m_queue_family_index = queue_family_index;
-    device.m_extensions = extension_names;
-    return device;
+    return vk_device(*this, dev, queue_family_index, extension_names);
 }
 
 void vk_physical_device::set(VkPhysicalDevice dev)
@@ -361,20 +377,32 @@ std::vector<VkSurfaceFormatKHR> vk_surface::get_formats(vk_physical_device *dev)
 //--
 
 
-vk_image_view::vk_image_view(const vk_device &device, VkImageView view)
-             : m_device(device)
-             , m_handle(view)
-{}
+struct vk_image_view::data {
+    data(const vk_device &dev, VkImageView h)
+        : device(dev)
+        , handle(h)
+    {
+    }
+    ~data()
+    {
+        vkDestroyImageView(device.get_handle(), handle, nullptr);
+    }
 
-vk_image_view::vk_image_view(vk_image_view &&i)
-             : m_device(i.m_device)
-             , m_handle(i.m_handle)
+    vk_device device;
+    VkImageView handle;
+};
+
+vk_image_view::vk_image_view()
 {
 }
 
-vk_image_view::~vk_image_view()
+vk_image_view::vk_image_view(const vk_device &device, VkImageView view)
+             : m_data(std::make_shared<data>(device, view))
+{}
+
+VkImageView vk_image_view::get_handle() const
 {
-    vkDestroyImageView(m_device.get_handle(), m_handle, nullptr);
+    return m_data->handle;
 }
 
 

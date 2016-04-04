@@ -93,9 +93,7 @@ private:
 class vk_device
 {
 public:
-    vk_device(const vk_device &) = delete;
-    vk_device(vk_device &&);
-    ~vk_device();
+    vk_device();
 
     vk_queue get_queue(uint32_t index) const;
     vk_command_pool create_command_pool() const;
@@ -109,17 +107,15 @@ public:
     }
     bool is_extension_enabled(stringview extension) const;
 
-    const vk_physical_device &get_physical_device() const { return m_physical_device; }
+    const vk_physical_device &get_physical_device() const;
 
-    VkDevice get_handle() const { return m_handle; }
+    VkDevice get_handle() const;
 
 private:
-    vk_device(const vk_physical_device &phys);
+    vk_device(const vk_physical_device &phys, VkDevice handle, uint32_t qfi, const std::vector<std::string> &exts);
 
-    VkDevice m_handle;
-    std::vector<std::string> m_extensions;
-    const vk_physical_device &m_physical_device;
-    uint32_t m_queue_family_index;
+    struct data;
+    std::shared_ptr<const data> m_data;
     friend class vk_physical_device;
 };
 
@@ -235,16 +231,14 @@ private:
 class vk_image_view
 {
 public:
+    vk_image_view();
     vk_image_view(const vk_device &device, VkImageView view);
-    vk_image_view(const vk_image_view &) = delete;
-    vk_image_view(vk_image_view &&);
-    ~vk_image_view();
 
-    VkImageView get_handle() const { return m_handle; }
+    VkImageView get_handle() const;
 
 private:
-    const vk_device &m_device;
-    VkImageView m_handle;
+    struct data;
+    std::shared_ptr<const data> m_data;
 };
 
 class vk_image
