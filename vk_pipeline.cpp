@@ -229,9 +229,9 @@ void vk_graphics_pipeline::add_stage(vk_shader_module::stage s, stringview filen
     add_stage(vk_shader_module(m_device, s, filename), entrypoint);
 }
 
-vk_graphics_pipeline::binding vk_graphics_pipeline::add_binding(const vk_buffer &buffer)
+vk_graphics_pipeline::binding vk_graphics_pipeline::add_binding(const vk_buffer &buffer, input_rate rate)
 {
-    m_bindings.emplace_back(buffer);
+    m_bindings.emplace_back(buffer, rate);
     return m_bindings.size() - 1;
 }
 
@@ -434,7 +434,7 @@ void vk_graphics_pipeline::set_in_command_buffer(const vk_command_buffer &cmd_bu
     int i = 0;
     for (const auto &bind: m_bindings) {
         offsets[i] = 0;
-        buffers[i] = bind.buffer.get_handle();
+        buffers[i++] = bind.buffer.get_handle();
     }
     vkCmdBindVertexBuffers(cmd_buffer.get_handle(), 0, m_bindings.size(), buffers.data(), offsets.data());
 }
@@ -467,7 +467,7 @@ void vk_graphics_pipeline::get_bindings_info(VkPipelineVertexInputStateCreateInf
     for (const binding_state &bind: m_bindings) {
         binding_desc->binding = i++;
         binding_desc->stride = bind.buffer.stride();
-        binding_desc->inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+        binding_desc->inputRate = (VkVertexInputRate)bind.rate;
         ++binding_desc;
     }
 

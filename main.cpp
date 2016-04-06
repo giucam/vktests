@@ -198,12 +198,65 @@ inline std::ostream &operator<<(std::ostream &os, const glm::vec3 &v)
     return os;
 }
 
+static const int voxels[] = {
+    0, 0, 0,
+    1, 0, 0,
+    2, 0, 0,
+    3, 0, 0,
+    4, 0, 0,
+    5, 0, 0,
+    0, 1, 0,
+    1, 1, 0,
+    2, 1, 0,
+    3, 1, 0,
+    4, 1, 0,
+    5, 1, 0,
+    0, 2, 0,
+    1, 2, 0,
+    2, 2, 0,
+    3, 2, 0,
+    4, 2, 0,
+    5, 2, 0,
+    0, 3, 0,
+    1, 3, 0,
+    2, 3, 0,
+    3, 3, 0,
+    4, 3, 0,
+    5, 3, 0,
+    0, 4, 0,
+    1, 4, 0,
+    2, 4, 0,
+    3, 4, 0,
+    4, 4, 0,
+    5, 4, 0,
+    0, 5, 0,
+    1, 5, 0,
+    2, 5, 0,
+    3, 5, 0,
+    4, 5, 0,
+    5, 5, 0,
+    1, 1, 1,
+    0, 1, 0,
+    3, 0, 1,
+    3, 0, 2,
+    3, 0, 3,
+    3, 1, 3,
+    3, 2, 3,
+    3, 3, 3,
+    3, 4, 3,
+    3, 4, 2,
+    3, 4, 1,
+};
+
 struct winhnd : public vk_window
 {
     struct uniform_data {
         float matrix[16];
     };
     struct vertex { float p[3]; float c[4]; };
+    struct instance_data {
+        int x, y, z;
+    };
 
     winhnd(display &dpy, const vk_instance &instance, int w, int h)
         : vk_window(dpy, instance, w, h)
@@ -214,7 +267,8 @@ struct winhnd : public vk_window
         , uniform_buffer(get_device(), vk_buffer::usage::uniform_buffer, sizeof(uniform_data), 0)
         , buf(get_device(), 8)
         , index_buffer(get_device(), vk_buffer::usage::index_buffer, 200, 0)
-        , memory(get_device(), vk_device_memory::property::host_visible, 2048, uniform_buffer.get_required_memory_type())
+        , instances_buffer(get_device(), 128)
+        , memory(get_device(), vk_device_memory::property::host_visible, 4096, uniform_buffer.get_required_memory_type())
         , descset_layout(get_device(), { { 0, vk_descriptor::type::uniform_buffer, 1, vk_shader_module::stage::vertex } })
         , descpool(get_device(), { { vk_descriptor::type::uniform_buffer, 1 } })
         , descset(descpool.allocate_descriptor_set(descset_layout))
@@ -227,8 +281,9 @@ struct winhnd : public vk_window
     {
         VkResult res;
 
+        uint64_t offset = 0;
         print("mem size {}\n",buf.get_required_memory_size());
-        buf.bind_memory(&memory, 0);
+        buf.bind_memory(&memory, offset);
         buf.map([](void *data) {
             static const vertex vertices[] = {
                 { { -1.0f, -1.0f, -1.f, }, { 1, 0, 0, 1, }, },
@@ -244,8 +299,9 @@ struct winhnd : public vk_window
 
             memcpy(data, vertices, sizeof(vertices));
         });
+        offset += buf.get_required_memory_size();
 
-        index_buffer.bind_memory(&memory, buf.get_required_memory_size());
+        index_buffer.bind_memory(&memory, offset);
         index_buffer.map([](void *data) {
             static const uint32_t indices[] = {
                 //front
@@ -274,11 +330,19 @@ struct winhnd : public vk_window
             };
             memcpy(data, indices, sizeof(indices));
         });
+        offset += index_buffer.get_required_memory_size();
 
+        instances_buffer.bind_memory(&memory, offset);
+        instances_buffer.map([&](void *data) {
+
+            memcpy(data, voxels, sizeof(voxels));
+        });
+        offset += instances_buffer.get_required_memory_size();
 
         assert(uniform_buffer.get_required_memory_type() == buf.get_required_memory_type());
         assert(uniform_buffer.get_required_memory_type() == index_buffer.get_required_memory_type());
-        uniform_buffer.bind_memory(&memory, buf.get_required_memory_size() + index_buffer.get_required_memory_size());
+        uniform_buffer.bind_memory(&memory, offset);
+        offset += uniform_buffer.get_required_memory_size();
 
         auto fence = vk_fence(get_device());
 
@@ -296,9 +360,12 @@ struct winhnd : public vk_window
         pipeline.add_stage(vk_shader_module::stage::vertex, "vert.spv", "main");
         pipeline.add_stage(vk_shader_module::stage::fragment, "frag.spv", "main");
 
-        auto binding = pipeline.add_binding(buf);
+        auto binding = pipeline.add_binding(buf, vk_graphics_pipeline::input_rate::vertex);
         pipeline.add_attribute(binding, 0, VK_FORMAT_R32G32B32_SFLOAT, 0);
         pipeline.add_attribute(binding, 1, VK_FORMAT_R32G32B32A32_SFLOAT, 12);
+
+        binding = pipeline.add_binding(instances_buffer, vk_graphics_pipeline::input_rate::instance);
+        pipeline.add_attribute(binding, 2, VK_FORMAT_R32G32B32_UINT, 0);
 
         pipeline.set_primitive_mode(vk_graphics_pipeline::triangle_list, false);
         pipeline.set_blending(true);
@@ -393,11 +460,13 @@ struct winhnd : public vk_window
         if (m_debug) {
             fmt::print("frame time: {}\n", time_diff);
         }
+
+
 //             assert(time_diff<30);
 
         vkDeviceWaitIdle(get_device().get_handle());
 
-        m_angle += 0.5 * time_diff * m_animate;
+//         m_angle += 0.5 * time_diff * m_animate;
 
         update_camera(time_diff);
 
@@ -408,7 +477,7 @@ struct winhnd : public vk_window
 //         fmt::print("{}\n",m_camera_pos.z);
 //         fmt::print("{}\n", matrix);
 
-        uniform_buffer.map([&matrix](void *ptr) {
+        uniform_buffer.map([&](void *ptr) {
             uniform_data *data = static_cast<uniform_data *>(ptr);
 
             memcpy(data->matrix, glm::value_ptr(matrix), sizeof(uniform_data::matrix));
@@ -446,7 +515,7 @@ struct winhnd : public vk_window
         auto viewport = vk_viewport(0, 0, framebuffer.get_width(), framebuffer.get_height());
         cmd_buffer.set_parameter(viewport);
 
-        vkCmdDrawIndexed(cmd_buffer.get_handle(), 36, 1, 0, 0, 0);
+        vkCmdDrawIndexed(cmd_buffer.get_handle(), 36, sizeof(voxels) / 12, 0, 0, 0);
         vkCmdEndRenderPass(cmd_buffer.get_handle());
 
 
@@ -546,6 +615,7 @@ struct winhnd : public vk_window
     vk_buffer uniform_buffer;
     vk_vertex_buffer<vertex> buf;
     vk_buffer index_buffer;
+    vk_vertex_buffer<instance_data> instances_buffer;
     vk_device_memory memory;
     vk_descriptor_set_layout descset_layout;
     vk_descriptor_pool descpool;

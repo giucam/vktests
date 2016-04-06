@@ -149,6 +149,10 @@ public:
         counter_clockwise = VK_FRONT_FACE_COUNTER_CLOCKWISE,
         clockwise = VK_FRONT_FACE_CLOCKWISE,
     };
+    enum class input_rate {
+        vertex = VK_VERTEX_INPUT_RATE_VERTEX,
+        instance = VK_VERTEX_INPUT_RATE_INSTANCE,
+    };
 
     class binding
     {
@@ -164,7 +168,7 @@ public:
     void add_stage(const vk_shader_module &shader, stringview entrypoint);
     void add_stage(vk_shader_module::stage s, stringview filename, stringview entrypoint);
 
-    binding add_binding(const vk_buffer &buffer);
+    binding add_binding(const vk_buffer &buffer, input_rate rate);
     void add_attribute(binding b, uint32_t location, VkFormat format, uint32_t offset);
     void set_primitive_mode(topology topology, bool primitive_restart_enable);
 
@@ -207,8 +211,9 @@ private:
     };
     std::vector<attribute> m_attributes;
     struct binding_state {
-        binding_state(const vk_buffer &buf) : buffer(buf) {}
+        binding_state(const vk_buffer &buf, input_rate r) : buffer(buf), rate(r) {}
         const vk_buffer &buffer;
+        input_rate rate;
     };
     std::vector<binding_state> m_bindings;
 
