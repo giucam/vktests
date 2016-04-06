@@ -14,6 +14,7 @@
 #include <glm/mat4x4.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <glm/gtx/vector_query.hpp>
 
 #include "stringview.h"
 #include "display.h"
@@ -191,6 +192,12 @@ inline std::ostream &operator<<(std::ostream &os, const glm::mat4x4 &m)
     return os;
 }
 
+inline std::ostream &operator<<(std::ostream &os, const glm::vec3 &v)
+{
+    os << "vec3(" << v.x << ", " << v.y << ", " << v.z << ")";
+    return os;
+}
+
 struct winhnd : public vk_window
 {
     struct uniform_data {
@@ -328,25 +335,27 @@ struct winhnd : public vk_window
 
         m_camera.projection = glm::perspective<double>(glm::radians(60.f), 1, 0.1f, 256.f);
 
-        m_camera.pos = glm::vec3(0, 0, -10);
+        m_camera.pos = glm::vec3(-15, 0, -30);
         update_camera_orientation();
+        m_camera.view = glm::lookAt(m_camera.pos, m_camera.pos + m_camera.direction, m_camera.up);
         m_mouse_pressed = false;
     }
 
     void update_camera_orientation()
     {
-        m_camera.direction = glm::vec3(cos(m_camera.angle.y) * sin(m_camera.angle.x),
-                                       sin(m_camera.angle.y),
-                                       cos(m_camera.angle.y) * cos(m_camera.angle.x));
+        auto cy = cos(m_camera.angle.y);
+        auto sx = sin(m_camera.angle.x);
+        auto sy = sin(m_camera.angle.y);
+        auto cx = cos(m_camera.angle.x);
+        m_camera.direction = glm::vec3(cy * sx, sy, cy * cx);
 
-        auto right = glm::vec3(sin(m_camera.angle.x - 3.1415/2.), 0, cos(m_camera.angle.x - 3.1415/2.));
+        auto right = glm::vec3(sin(m_camera.angle.x - glm::half_pi<float>()), 0, cos(m_camera.angle.x - glm::half_pi<float>()));
         m_camera.up = glm::cross(right, m_camera.direction);
     }
 
     void update_camera(float time_diff)
     {
-        m_camera.pos += m_camera.move * time_diff;
-
+        bool update_view = false;
         if (m_mouse_pressed) {
             auto delta = m_cur_mouse_pos - m_mouse_pos;
             delta /= 8.f;
@@ -354,8 +363,25 @@ struct winhnd : public vk_window
             m_camera.angle.x += delta.x * time_diff;
             m_camera.angle.y += delta.y * time_diff;
             update_camera_orientation();
+            update_view = true;
         }
-        m_camera.view = glm::lookAt(m_camera.pos, m_camera.pos + m_camera.direction, m_camera.up);
+
+        if (!glm::isNull(m_camera.move, 0.001f)) {
+            auto move = m_camera.move * time_diff * 2.f;
+
+            glm::vec3 new_y = glm::normalize(m_camera.direction);
+            glm::vec3 new_z = glm::cross(new_y, glm::vec3(0, 1, 0));
+            glm::vec3 new_x = glm::cross(new_y, new_z);
+            auto transform = glm::mat3(new_x, new_y, new_z);
+            move = transform * move;
+
+            m_camera.pos += move;
+            update_view = true;
+        }
+
+        if (update_view) {
+            m_camera.view = glm::lookAt(m_camera.pos, m_camera.pos + m_camera.direction, m_camera.up);
+        }
         m_mouse_pos = m_cur_mouse_pos;
     }
 
@@ -496,19 +522,19 @@ struct winhnd : public vk_window
 
         switch (k) {
             case 17: {
-                m_camera.move.z = -2 * pressed;
+                m_camera.move.y = 1 * pressed;
                 break;
             }
             case 31: {
-                m_camera.move.z = 2 * pressed;
+                m_camera.move.y = -1 * pressed;
                 break;
             }
             case 32: {
-                m_camera.move.x = 2 * pressed;
+                m_camera.move.z = -1 * pressed;
                 break;
             }
             case 30: {
-                m_camera.move.x = -1 * pressed;
+                m_camera.move.z = 1 * pressed;
             }
         }
     }
