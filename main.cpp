@@ -33,50 +33,6 @@ using std::vector;
 using fmt::print;
 
 
-VkSurfaceFormatKHR get_format(const vk_surface &surface, vk_physical_device *dev)
-{
-    auto formats = surface.get_formats(dev);
-    auto format = formats.at(0);
-    print("Found {} formats, using {}\n", formats.size(), format.format);
-
-    VkSurfaceCapabilitiesKHR surface_caps;
-    VkResult res = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(dev->get_handle(), surface.get_handle(), &surface_caps);
-    if (res != VK_SUCCESS) {
-        throw vk_exception("Failed to get physical device surface capabilities: {}\n");
-    }
-
-    uint32_t present_mode_count;
-    res = vkGetPhysicalDeviceSurfacePresentModesKHR(dev->get_handle(), surface.get_handle(), &present_mode_count, nullptr);
-    if (res != VK_SUCCESS) {
-        throw vk_exception("Failed to get the number of physical device surface present modes: {}\n");
-    }
-    auto present_modes = vector<VkPresentModeKHR>(present_mode_count);
-    res = vkGetPhysicalDeviceSurfacePresentModesKHR(dev->get_handle(), surface.get_handle(), &present_mode_count, present_modes.data());
-    if (res != VK_SUCCESS) {
-        throw vk_exception("Failed to get the physical device surface present modes: {}\n");
-    }
-    print("Found {} present modes available\n", present_modes.size());
-
-    return format;
-}
-
-int get_queue_family(vk_physical_device *dev, const vk_surface &surface)
-{
-    int family_queue_index = -1;
-    auto queues_props = dev->get_queue_family_properties();
-    for (size_t i = 0; i < queues_props.size(); ++i) {
-        if (queues_props.at(i).is_graphics_capable() && surface.supports_present(dev, i)) {
-            family_queue_index = i;
-            break;
-        }
-    }
-
-    if (family_queue_index < 0) {
-        throw vk_exception("Cannot find graphics queue.\n");
-    }
-    return family_queue_index;
-}
-
 class vk_window
 {
 public:
@@ -159,6 +115,50 @@ public:
     virtual void key(uint32_t /*key*/, bool /*pressed*/) {}
 
 private:
+    static VkSurfaceFormatKHR get_format(const vk_surface &surface, vk_physical_device *dev)
+    {
+        auto formats = surface.get_formats(dev);
+        auto format = formats.at(0);
+        print("Found {} formats, using {}\n", formats.size(), format.format);
+
+        VkSurfaceCapabilitiesKHR surface_caps;
+        VkResult res = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(dev->get_handle(), surface.get_handle(), &surface_caps);
+        if (res != VK_SUCCESS) {
+            throw vk_exception("Failed to get physical device surface capabilities: {}\n");
+        }
+
+        uint32_t present_mode_count;
+        res = vkGetPhysicalDeviceSurfacePresentModesKHR(dev->get_handle(), surface.get_handle(), &present_mode_count, nullptr);
+        if (res != VK_SUCCESS) {
+            throw vk_exception("Failed to get the number of physical device surface present modes: {}\n");
+        }
+        auto present_modes = vector<VkPresentModeKHR>(present_mode_count);
+        res = vkGetPhysicalDeviceSurfacePresentModesKHR(dev->get_handle(), surface.get_handle(), &present_mode_count, present_modes.data());
+        if (res != VK_SUCCESS) {
+            throw vk_exception("Failed to get the physical device surface present modes: {}\n");
+        }
+        print("Found {} present modes available\n", present_modes.size());
+
+        return format;
+    }
+
+    static int get_queue_family(vk_physical_device *dev, const vk_surface &surface)
+    {
+        int family_queue_index = -1;
+        auto queues_props = dev->get_queue_family_properties();
+        for (size_t i = 0; i < queues_props.size(); ++i) {
+            if (queues_props.at(i).is_graphics_capable() && surface.supports_present(dev, i)) {
+                family_queue_index = i;
+                break;
+            }
+        }
+
+        if (family_queue_index < 0) {
+            throw vk_exception("Cannot find graphics queue.\n");
+        }
+        return family_queue_index;
+    }
+
     window m_window;
     const vk_instance &m_instance;
     vk_physical_device m_phys_device;
@@ -197,6 +197,42 @@ inline std::ostream &operator<<(std::ostream &os, const glm::vec3 &v)
     os << "vec3(" << v.x << ", " << v.y << ", " << v.z << ")";
     return os;
 }
+
+
+class sg_item
+{
+public:
+    sg_item(const vk_device &device)
+        : m_device(device)
+        , m_pipeline(device)
+        , m_descset_layout(device, { })
+        , m_pipeline_layout(device, m_descset_layout)
+    {
+    }
+
+    void init(const vk_renderpass &rpass)
+    {
+        m_pipeline.add_stage(vk_shader_module::stage::vertex, "vert-ui.spv", "main");
+        m_pipeline.add_stage(vk_shader_module::stage::fragment, "frag-ui.spv", "main");
+
+        m_pipeline.set_primitive_mode(vk_graphics_pipeline::triangle_strip, false);
+        m_pipeline.set_blending(true);
+
+        m_pipeline.create(rpass, m_pipeline_layout);
+    }
+
+    void draw(vk_command_buffer &cmd_buffer)
+    {
+        cmd_buffer.set_parameter(m_pipeline);
+
+        vkCmdDraw(cmd_buffer.get_handle(), 4, 1, 0, 0);
+    }
+
+    const vk_device &m_device;
+    vk_graphics_pipeline m_pipeline;
+    vk_descriptor_set_layout m_descset_layout;
+    vk_pipeline_layout m_pipeline_layout;
+};
 
 static const int voxels[] = {
     0, 0, 0,
@@ -278,6 +314,7 @@ struct winhnd : public vk_window
         , m_angle(0)
         , m_animate(true)
         , m_debug(false)
+        , m_ui(get_device())
     {
         VkResult res;
 
@@ -371,6 +408,8 @@ struct winhnd : public vk_window
         pipeline.set_blending(true);
 
         pipeline.create(get_renderpass(), pipeline_layout);
+
+        m_ui.init(get_renderpass());
 
 
         get_init_command_buffer().end();
@@ -496,8 +535,6 @@ struct winhnd : public vk_window
             cmd_buffer.set_parameter(pipeline);
             vkCmdBindIndexBuffer(cmd_buffer.get_handle(), index_buffer.get_handle(), 0, VK_INDEX_TYPE_UINT32);
 
-            vk_renderpass_record(get_renderpass(), cmd_buffer, framebuffer) {}
-
             VkDescriptorSet descsets[] = { descset.get_handle(), };
             vkCmdBindDescriptorSets(cmd_buffer.get_handle(), VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout.get_handle(), 0, 1, descsets, 0, nullptr);
 
@@ -505,6 +542,8 @@ struct winhnd : public vk_window
             cmd_buffer.set_parameter(viewport);
 
             vkCmdDrawIndexed(cmd_buffer.get_handle(), 36, sizeof(voxels) / 12, 0, 0, 0);
+
+            m_ui.draw(cmd_buffer);
         }
 
 
@@ -625,6 +664,7 @@ struct winhnd : public vk_window
     } m_camera;
     glm::vec2 m_mouse_pos, m_cur_mouse_pos;
     bool m_mouse_pressed;
+    sg_item m_ui;
 };
 
 
