@@ -126,6 +126,17 @@ vk_pipeline_layout::~vk_pipeline_layout()
 //--
 
 
+vk_renderpass::scope::scope(const vk_command_buffer &cmd_buffer)
+                    : m_cmd_buffer(cmd_buffer)
+{
+}
+
+vk_renderpass::scope::~scope()
+{
+    vkCmdEndRenderPass(m_cmd_buffer.get_handle());
+}
+
+
 vk_renderpass::vk_renderpass(const vk_device &device, VkFormat format, VkFormat depth_format)
              : m_device(device)
 {
@@ -194,6 +205,27 @@ vk_renderpass::vk_renderpass(const vk_device &device, VkFormat format, VkFormat 
 vk_renderpass::~vk_renderpass()
 {
     vkDestroyRenderPass(m_device.get_handle(), m_handle, nullptr);
+}
+
+void vk_renderpass::set_clear_values(const std::vector<VkClearValue> &values)
+{
+    m_clear_values = values;
+}
+
+vk_renderpass::scope vk_renderpass::begin(const vk_command_buffer &cmd_buffer, const vk_framebuffer &framebuffer)
+{
+    VkRenderPassBeginInfo render_pass_begin_info = {
+        VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, //type
+        nullptr, //next
+        m_handle, //render pass
+        framebuffer.get_handle(), //framebuffer
+        { { 0, 0 }, { framebuffer.get_width(), framebuffer.get_height() } }, //render area
+        (uint32_t)m_clear_values.size(), //clear value count
+        m_clear_values.data(), //clear values
+    };
+
+    vkCmdBeginRenderPass(cmd_buffer.get_handle(), &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
+    return scope(cmd_buffer);
 }
 
 

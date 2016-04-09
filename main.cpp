@@ -141,7 +141,7 @@ public:
     const vk_surface &get_surface() const { return m_surface; }
     const vk_device &get_device() const { return m_device; }
     vk_command_buffer &get_init_command_buffer() { return m_init_cmd_buf; }
-    const vk_renderpass &get_renderpass() const { return m_renderpass; }
+    vk_renderpass &get_renderpass() { return m_renderpass; }
     const vk_framebuffer &acquire_next_framebuffer()
     {
         m_fb_index = m_swapchain.acquire_next_image_index();
@@ -487,36 +487,25 @@ struct winhnd : public vk_window
 
         cmd_buffer.begin();
 
-        VkClearValue clear_values[2];
-        clear_values[0].color.float32[0] = 1.0f;
-        clear_values[0].color.float32[1] = 1.0f;
-        clear_values[0].color.float32[2] = 1.0f;
-        clear_values[0].color.float32[3] = 1.0f;
+        VkClearValue color_clear, depth_clear;
+        color_clear.color = { .float32 = {1.0f, 1.f, 1.f, 1.f} };
+        depth_clear.depthStencil = { 1.f, 0 };
 
-        clear_values[1].depthStencil = { 1.f, 0 };
-        VkRenderPassBeginInfo render_pass_begin_info = {
-            VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, //type
-            nullptr, //next
-            get_renderpass().get_handle(), //render pass
-            framebuffer.get_handle(), //framebuffer
-            { { 0, 0 }, { framebuffer.get_width(), framebuffer.get_height() } }, //render area
-            sizeof(clear_values) / sizeof(VkClearValue), //clear value count
-            clear_values, //clear values
-        };
+        get_renderpass().set_clear_values({ color_clear, depth_clear });
+        vk_renderpass_record(get_renderpass(), cmd_buffer, framebuffer) {
+            cmd_buffer.set_parameter(pipeline);
+            vkCmdBindIndexBuffer(cmd_buffer.get_handle(), index_buffer.get_handle(), 0, VK_INDEX_TYPE_UINT32);
 
-        vkCmdBeginRenderPass(cmd_buffer.get_handle(), &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
+            vk_renderpass_record(get_renderpass(), cmd_buffer, framebuffer) {}
 
-        cmd_buffer.set_parameter(pipeline);
-        vkCmdBindIndexBuffer(cmd_buffer.get_handle(), index_buffer.get_handle(), 0, VK_INDEX_TYPE_UINT32);
+            VkDescriptorSet descsets[] = { descset.get_handle(), };
+            vkCmdBindDescriptorSets(cmd_buffer.get_handle(), VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout.get_handle(), 0, 1, descsets, 0, nullptr);
 
-        VkDescriptorSet descsets[] = { descset.get_handle(), };
-        vkCmdBindDescriptorSets(cmd_buffer.get_handle(), VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout.get_handle(), 0, 1, descsets, 0, nullptr);
+            auto viewport = vk_viewport(0, 0, framebuffer.get_width(), framebuffer.get_height());
+            cmd_buffer.set_parameter(viewport);
 
-        auto viewport = vk_viewport(0, 0, framebuffer.get_width(), framebuffer.get_height());
-        cmd_buffer.set_parameter(viewport);
-
-        vkCmdDrawIndexed(cmd_buffer.get_handle(), 36, sizeof(voxels) / 12, 0, 0, 0);
-        vkCmdEndRenderPass(cmd_buffer.get_handle());
+            vkCmdDrawIndexed(cmd_buffer.get_handle(), 36, sizeof(voxels) / 12, 0, 0, 0);
+        }
 
 
         VkImageMemoryBarrier image_memory_barrier = {

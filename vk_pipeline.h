@@ -3,6 +3,8 @@
 
 #include "vk.h"
 
+class vk_framebuffer;
+
 class vk_descriptor
 {
 public:
@@ -109,15 +111,38 @@ private:
 class vk_renderpass
 {
 public:
+    class scope
+    {
+    public:
+        scope(const scope &) = delete;
+        scope(scope &&s) = default;
+        ~scope();
+
+        operator bool() const { return true; }
+
+    private:
+        scope(const vk_command_buffer &cmd_buffer);
+
+        const vk_command_buffer &m_cmd_buffer;
+        friend vk_renderpass;
+    };
+
     vk_renderpass(const vk_device &device, VkFormat format, VkFormat depth_format);
     ~vk_renderpass();
+
+    void set_clear_values(const std::vector<VkClearValue> &values);
+    scope begin(const vk_command_buffer &cmd_buffer, const vk_framebuffer &framebuffer);
 
     VkRenderPass get_handle() const { return m_handle; }
 
 private:
     VkRenderPass m_handle;
     const vk_device &m_device;
+    std::vector<VkClearValue> m_clear_values;
 };
+
+#define vk_renderpass_record(rpass, cmdbuf, framebuffer) \
+    if (auto __scope = rpass.begin(cmdbuf, framebuffer)) \
 
 class vk_graphics_pipeline
 {
