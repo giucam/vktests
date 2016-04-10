@@ -32,6 +32,11 @@ using std::make_shared;
 using std::vector;
 using fmt::print;
 
+inline uint64_t align_offset(uint64_t &offset, const vk_buffer &buf)
+{
+    offset += offset % buf.get_required_memory_alignment();
+    return offset;
+}
 
 class vk_window
 {
@@ -79,7 +84,7 @@ public:
             0, //src queue family index
             0, //dst queue family index
             m_depth.image.get_handle(), //image
-            { VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 }, //subresource range
+            { VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT, 0, 1, 0, 1 }, //subresource range
         };
 
         vkCmdPipelineBarrier(m_init_cmd_buf.get_handle(), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, 0, nullptr, 0,
@@ -338,7 +343,7 @@ struct winhnd : public vk_window
         });
         offset += buf.get_required_memory_size();
 
-        index_buffer.bind_memory(&memory, offset);
+        index_buffer.bind_memory(&memory, align_offset(offset, index_buffer));
         index_buffer.map([](void *data) {
             static const uint32_t indices[] = {
                 //front
@@ -369,7 +374,7 @@ struct winhnd : public vk_window
         });
         offset += index_buffer.get_required_memory_size();
 
-        instances_buffer.bind_memory(&memory, offset);
+        instances_buffer.bind_memory(&memory, align_offset(offset, instances_buffer));
         instances_buffer.map([&](void *data) {
 
             memcpy(data, voxels, sizeof(voxels));
@@ -378,7 +383,7 @@ struct winhnd : public vk_window
 
         assert(uniform_buffer.get_required_memory_type() == buf.get_required_memory_type());
         assert(uniform_buffer.get_required_memory_type() == index_buffer.get_required_memory_type());
-        uniform_buffer.bind_memory(&memory, offset);
+        uniform_buffer.bind_memory(&memory, align_offset(offset, uniform_buffer));
         offset += uniform_buffer.get_required_memory_size();
 
         auto fence = vk_fence(get_device());
@@ -402,7 +407,7 @@ struct winhnd : public vk_window
         pipeline.add_attribute(binding, 1, VK_FORMAT_R32G32B32A32_SFLOAT, 12);
 
         binding = pipeline.add_binding(instances_buffer, vk_graphics_pipeline::input_rate::instance);
-        pipeline.add_attribute(binding, 2, VK_FORMAT_R32G32B32_UINT, 0);
+        pipeline.add_attribute(binding, 2, VK_FORMAT_R32G32B32_SINT, 0);
 
         pipeline.set_primitive_mode(vk_graphics_pipeline::triangle_list, false);
         pipeline.set_blending(true);
