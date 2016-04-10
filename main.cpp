@@ -526,6 +526,22 @@ struct winhnd : public vk_window
 
         cmd_buffer.begin();
 
+        VkImageMemoryBarrier image_memory_barrier = {
+            VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, //type
+            nullptr, //next
+            0, //src access mask
+            VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, //dst access mask
+            VK_IMAGE_LAYOUT_UNDEFINED, //old image layout
+            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, //new image layout
+            0, //src queue family index
+            0, //dst queue family index
+            framebuffer.get_image().get_handle(), //image
+            { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 }, //subresource range
+        };
+
+        vkCmdPipelineBarrier(cmd_buffer.get_handle(), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, 0, nullptr, 0,
+                            nullptr, 1, &image_memory_barrier);
+
         VkClearValue color_clear, depth_clear;
         color_clear.color = { .float32 = {1.0f, 1.f, 1.f, 1.f} };
         depth_clear.depthStencil = { 1.f, 0 };
@@ -546,22 +562,21 @@ struct winhnd : public vk_window
             m_ui.draw(cmd_buffer);
         }
 
-
-        VkImageMemoryBarrier image_memory_barrier = {
+        VkImageMemoryBarrier present_image_memory_barrier = {
             VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, //type
             nullptr, //next
-            0, //src access mask
-            VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, //dst access mask
-            VK_IMAGE_LAYOUT_UNDEFINED, //old image layout
+            VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, //src access mask
+            VK_ACCESS_MEMORY_READ_BIT, //dst access mask
+            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, //old image layout
             VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, //new image layout
             0, //src queue family index
             0, //dst queue family index
             framebuffer.get_image().get_handle(), //image
             { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 }, //subresource range
         };
+        vkCmdPipelineBarrier(cmd_buffer.get_handle(), VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0,
+                            nullptr, 1, &present_image_memory_barrier);
 
-        vkCmdPipelineBarrier(cmd_buffer.get_handle(), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, 0, nullptr, 0,
-                            nullptr, 1, &image_memory_barrier);
 
         cmd_buffer.end();
 

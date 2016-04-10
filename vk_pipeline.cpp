@@ -461,14 +461,16 @@ void vk_graphics_pipeline::set_in_command_buffer(const vk_command_buffer &cmd_bu
 {
     vkCmdBindPipeline(cmd_buffer.get_handle(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_handle);
 
-    auto offsets = std::vector<VkDeviceSize>(m_bindings.size());
-    auto buffers = std::vector<VkBuffer>(m_bindings.size());
-    int i = 0;
-    for (const auto &bind: m_bindings) {
-        offsets[i] = 0;
-        buffers[i++] = bind.buffer.get_handle();
+    if (!m_bindings.empty()) {
+        auto offsets = std::vector<VkDeviceSize>(m_bindings.size());
+        auto buffers = std::vector<VkBuffer>(m_bindings.size());
+        int i = 0;
+        for (const auto &bind: m_bindings) {
+            offsets[i] = 0;
+            buffers[i++] = bind.buffer.get_handle();
+        }
+        vkCmdBindVertexBuffers(cmd_buffer.get_handle(), 0, m_bindings.size(), buffers.data(), offsets.data());
     }
-    vkCmdBindVertexBuffers(cmd_buffer.get_handle(), 0, m_bindings.size(), buffers.data(), offsets.data());
 }
 
 void vk_graphics_pipeline::get_shader_info(VkPipelineShaderStageCreateInfo *info)
